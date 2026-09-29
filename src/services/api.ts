@@ -67,6 +67,26 @@ export const api = {
     return res.json();
   },
 
+  // AI Smart Reply Suggestions
+  async getSmartReplySuggestions(message: string, history: any[] = [], customerName?: string): Promise<string[]> {
+    try {
+      const res = await fetch('/api/chat/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, history, customerName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          return data.suggestions.slice(0, 3);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch smart reply suggestions:', err);
+    }
+    return [];
+  },
+
   // Tasks
   async getTasks(): Promise<StudioTask[]> {
     const res = await fetch('/api/tasks');

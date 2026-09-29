@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Building2
 } from 'lucide-react';
+import { ref, get, onChildAdded } from 'firebase/database';
+import { db } from '../firebase';
 
 export interface WhatsAppMessage {
   id: string;
@@ -76,6 +78,118 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
     { id: 'q5', label: '💰 חשבונית', text: 'חשבונית מס מצורפת 💰\nלתשלום בביט / העברה בנקאית. תודה!' },
     { id: 'q6', label: '❓ עזרה', text: 'היי, נציג ח. סבן זמין עבורך לכל שאלה בטלפון 050-886-0896 🏗️' }
   ];
+
+  // STEP 1 & STEP 3: Firebase RTDB Listener with Debug Logs
+  useEffect(() => {
+    console.log("🔍 START LISTENING TO: joni/incoming");
+
+    const incomingRef = ref(db, 'joni/incoming');
+
+    // DEBUG 1: Check if we can read
+    get(incomingRef).then(snap => {
+      console.log("📦 CURRENT DATA IN joni/incoming:", snap.val());
+      const val = snap.val() || {};
+      const count = Object.keys(val).length;
+      console.log("📦 COUNT:", count);
+
+      if (val && typeof val === 'object') {
+        const initial: WhatsAppMessage[] = [];
+        Object.entries(val).forEach(([key, data]: [string, any]) => {
+          const text = data.text || data.incoming_text || data.lastMessage || '';
+          if (text) {
+            initial.push({
+              id: key,
+              sender: 'user',
+              text,
+              timestamp: data.timestamp ? new Date(data.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
+              status: 'read'
+            });
+          }
+        });
+        if (initial.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const fresh = initial.filter(m => !existingIds.has(m.id));
+            return [...prev, ...fresh];
+          });
+        }
+      }
+    }).catch(err => {
+      console.error("❌ FIREBASE READ ERROR:", err.code, err.message);
+      console.error("👉 FIX: Check Firebase Rules!");
+    });
+
+    const unsub = onChildAdded(incomingRef, (snap) => {
+      console.log("🔥 NEW MESSAGE DETECTED:", snap.key, snap.val());
+      const data = snap.val();
+
+      // CRITICAL FIX: Handle both structures
+      // Structure 1: {from, text, name}
+      // Structure 2: {from, incoming_text, sent_response}
+      const phone = (data.from || data.senderBusiness || '').toString().replace(/[^0-9]/g, '');
+      const text = data.text || data.incoming_text || data.lastMessage || '';
+
+      if (!phone || !text) {
+        console.warn("⚠️ SKIPPED - missing phone or text:", data);
+        return;
+      }
+
+      console.log("✅ PROCESSING:", phone, text);
+
+      // Force update UI state immediately (not only Firebase)
+      setMessages(prev => {
+        if (prev.some(m => m.id === snap.key || (m.text === text && m.sender === 'user'))) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: snap.key || `inc_${Date.now()}`,
+            sender: 'user',
+            text,
+            timestamp: getCurrentTime(),
+            status: 'read'
+          }
+        ];
+      });
+    });
+
+    return () => unsub();
+  }, []);
+
+  // STEP 4: Manual Sync Button For Testing
+  const handleManualSync = async () => {
+    try {
+      console.log("🔄 MANUAL SYNC TRIGGERED");
+      const snap = await get(ref(db, 'joni/incoming'));
+      const data = snap.val();
+      console.log("SYNC:", data);
+      if (data && typeof data === 'object') {
+        const loaded: WhatsAppMessage[] = [];
+        Object.entries(data).forEach(([key, msg]: [string, any]) => {
+          const text = msg.text || msg.incoming_text || msg.lastMessage || '';
+          if (text) {
+            loaded.push({
+              id: key,
+              sender: 'user',
+              text,
+              timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
+              status: 'read'
+            });
+          }
+        });
+        if (loaded.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const fresh = loaded.filter(m => !existingIds.has(m.id));
+            return [...prev, ...fresh];
+          });
+        }
+      }
+    } catch (err) {
+      console.error("❌ SYNC FAILED:", err);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,7 +329,17 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
         </div>
 
         {/* Action icons */}
-        <div className="flex items-center gap-3 text-white/90">
+        <div className="flex items-center gap-2 text-white/90">
+          {/* STEP 4: Manual Sync Button */}
+          <button 
+            onClick={handleManualSync}
+            className="px-2.5 py-1 text-xs bg-[#128C7E] hover:bg-[#25D366] text-white rounded-lg transition-all font-semibold flex items-center gap-1 active:scale-95 shadow-sm"
+            title="סנכרן הודעות ישירות מ-Firebase"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>🔄 סנכרן הודעות</span>
+          </button>
+
           <button 
             onClick={() => window.open(`tel:${initialRecipient.replace(/[^0-9+]/g, '')}`)}
             className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors"
