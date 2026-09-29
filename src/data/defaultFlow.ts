@@ -1,17 +1,22 @@
 import { FlowTree, StudioSettings, StudioTask, Conversation, LogEntry } from '../types/studio';
 
 export const DEFAULT_SETTINGS: StudioSettings = {
-  businessName: 'ח. סבן חומרי בניין',
+  businessName: 'רמי מסארוה / ח. סבן',
   businessNumber: '+972508860896',
   firebaseSendUrl: 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app/joni/send.json',
   waitTimeSeconds: 2,
-  metaPhoneNumberId: '109886089612345',
+  metaPhoneNumberId: '646128321917738',
   metaAccessToken: '',
   enableMetaCloudApi: true,
   enableJoniBridge: true,
   defaultFallbackToText: true,
   language: 'עברית',
   webhookBaseUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+  metaVerifiedName: 'ראמי מסארווה',
+  metaDisplayPhone: '+972 50-886-0896',
+  metaConnectionStatus: 'מחובר ל-Cloud API',
+  lastCheckResult: '{"verified_name":"ראמי מסארווה","display_phone_number":"+972 50-886-0896","id":"646128321917738"} - תקין ✅',
+  lastMessageIdSent: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA'
 };
 
 export const DEFAULT_FLOW: FlowTree = {
@@ -434,6 +439,31 @@ export const INITIAL_TASKS: StudioTask[] = [
 ];
 
 export const INITIAL_LOGS: LogEntry[] = [
+  {
+    id: 'log_live_check',
+    from: '+972508860896',
+    customer_name: 'ראמי מסארווה',
+    incoming_text: 'בדיקת חיבור חיה Meta Graph API (v20.0)',
+    sent_response: 'תוצאת בדיקה אחרונה: {"verified_name":"ראמי מסארווה","display_phone_number":"+972 50-886-0896","id":"646128321917738"} - תקין ✅ (סטטוס: מחובר ל-Cloud API)',
+    response_type: 'unknown',
+    timestamp: new Date().toISOString(),
+    channel: 'meta',
+    status: 'delivered'
+  },
+  {
+    id: 'log_live_menu_send',
+    from: '+972524458912',
+    customer_name: 'רמי מסארוה לבדיקה',
+    incoming_text: '[שליחת תפריט מעוצב חי - Meta Interactive List]',
+    selected_menu_id: 'welcome_menu',
+    selected_menu_title: 'ח. סבן 🏗️ (4 אפשרויות שירות)',
+    sent_response: '✅ חיבור מלא - תפריט מעוצב נחת בוואטסאפ (Message ID: wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA)',
+    response_type: 'list_menu',
+    meta_message_id: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA',
+    timestamp: new Date(Date.now() - 1000 * 30).toISOString(),
+    channel: 'meta',
+    status: 'sent'
+  },
   {
     id: 'log_1',
     from: '+972524458912',

@@ -125,6 +125,7 @@ export interface LogEntry {
   status: 'sent' | 'delivered' | 'fallback_text' | 'error';
   task_id?: string;
   task_title?: string;
+  meta_message_id?: string;
   raw_payload?: Record<string, unknown>;
 }
 
@@ -181,4 +182,9 @@ export interface StudioSettings {
   defaultFallbackToText: boolean;
   language: string;
   webhookBaseUrl: string;
+  metaVerifiedName?: string;
+  metaDisplayPhone?: string;
+  metaConnectionStatus?: string;
+  lastCheckResult?: string;
+  lastMessageIdSent?: string;
 }

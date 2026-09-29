@@ -114,5 +114,28 @@ export const api = {
       body: JSON.stringify(payload),
     });
     return res.json();
+  },
+
+  // Live Meta WhatsApp Cloud API
+  async getMetaStatus(): Promise<any> {
+    const res = await fetch('/api/meta/status');
+    return res.json();
+  },
+
+  async testMetaConnection(): Promise<any> {
+    const res = await fetch('/api/meta/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json();
+  },
+
+  async sendLiveMetaMenu(to?: string): Promise<any> {
+    const res = await fetch('/api/meta/send-live-menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to })
+    });
+    return res.json();
   }
 };

@@ -216,6 +216,7 @@ export default function App() {
             settings={settings}
             onSaveSettings={handleSaveSettings}
             onTestWebhook={handleTestWebhook}
+            onRefreshData={refreshData}
             isInstallable={isInstallable}
             isInstalled={isInstalled}
             onInstall={promptInstall}
