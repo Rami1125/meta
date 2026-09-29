@@ -10,7 +10,13 @@ const SYSTEM_PROMPT = `אתה נציג שירות של ח. סבן חומרי ב�
 אתה מדבר בעברית מלאה, ידידותי, קצר, עם אימוג'ים 🏗️🚚.
 מטרה: להבין מה הלקוח צריך (ברזל, בלוקים, מלט, חול, מכולה) ולתאם הובלה/איסוף.
 אם לקוח אומר 'בדיקה' - תענה 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?'
-אל תמציא מחירים. תשאל כמות, כתובת, תאריך.`;
+אל תמציא מחירים.
+
+כלל קריטי לכל פנייה על חומרים או הובלה (לדוגמה: "ברזל 2 טון לכפר סבא", בלוקים, מלט וכדומה):
+תמיד תשאל את הלקוח ותוודא:
+1. כמות (או קוטר/סוג הברזל או המלט)
+2. כתובת מדויקת לאספקה (עיר, רחוב ומספר)
+3. תאריך מבוקש להובלה`;
 
 export async function POST(req: Request) {
   try {
@@ -21,12 +27,15 @@ export async function POST(req: Request) {
       body = { text: await req.text() };
     }
     
-    // 1. Sanitize incoming to valid JSON (GREEN JSON)
+    // 1. Sanitize incoming to valid JSON with serverTimestamp()
+    const now = Date.now();
     const clean = {
       from: String(body.from || body.phone || body.waId || "972508860896").replace(/\D/g, ""),
       text: String(body.text || body.message || body.body || JSON.stringify(body)).slice(0, 1000),
       name: String(body.name || body.pushName || "לקוח וואטסאפ").slice(0, 100),
-      timestamp: Date.now()
+      timestamp: now,
+      server_timestamp: { ".sv": "timestamp" },
+      created_at: { ".sv": "timestamp" }
     };
 
     // 1. Save to Firebase joni/incoming.json (KEEP GREEN)
@@ -48,29 +57,29 @@ export async function POST(req: Request) {
     let branchId = '';
     let aiUsed = false;
 
-    const lower = clean.text.toLowerCase();
+    const trimmed = clean.text.trim().toLowerCase();
 
-    // Check fixed branch keywords
-    if (lower.includes('הובלה') || lower.includes('משלוח') || lower === 'order_delivery' || lower === '1') {
+    // Check fixed digit menu choices
+    if (trimmed === '1' || trimmed === 'order_delivery') {
       branchReply = "🚚 מעולה! איזה חומר צריך?\n1️⃣ ברזל\n2️⃣ בלוקים\n3️⃣ מלט\n4️⃣ חול/חצץ";
       branchId = 'order_delivery';
-    } else if (lower.includes('איסוף') || lower.includes('מחסן') || lower === 'self_pickup' || lower === '2') {
+    } else if (trimmed === '2' || trimmed === 'self_pickup') {
       branchReply = "🏪 איסוף עצמי מהמחסן בכפר ברא.\nשלח מיקום או כתוב מה להכין לך?";
       branchId = 'self_pickup';
-    } else if (lower.includes('מכולה') || lower.includes('פסולת') || lower === 'waste_container' || lower === '3') {
+    } else if (trimmed === '3' || trimmed === 'waste_container') {
       branchReply = "🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב";
       branchId = 'waste_container';
-    } else if (lower.includes('מעקב') || lower.includes('איפה') || lower === 'track_order' || lower === '4') {
+    } else if (trimmed === '4' || trimmed === 'track_order') {
       branchReply = "📍 שלח מספר הזמנה ואבדוק לך מיד מול הנהג ראמי";
       branchId = 'track_order';
-    } else if (clean.text.includes('בדיקה') || lower === 'test') {
+    } else if (clean.text.includes('בדיקה') || trimmed === 'test') {
       branchReply = "הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין היום?";
       branchId = 'test_check';
     } else {
-      // 4. Free AI Chat Engine using Gemini
+      // 4. Free AI Chat Engine using Gemini (handles queries like "ברזל 2 טון לכפר סבא")
       aiUsed = true;
       branchId = 'ai_free_reply';
-      branchReply = "שלום! כאן נציג ח. סבן חומרי בניין כפר ברא 🏗️. איזה חומר אתה צריך (ברזל, בלוקים, מלט, חול) והאם מדובר בהובלה או באיסוף עצמי?";
+      branchReply = "שלום! נשמח לתאם הובלת חומרים 🏗️🚚. כדי שנוכל לתאם במדויק, אנא ציין: כמות, כתובת אספקה מלאה, ותאריך רצוי.";
 
       try {
         const apiKey = process.env.GEMINI_API_KEY;

@@ -659,7 +659,13 @@ const SABAN_AI_SYSTEM_PROMPT = `אתה נציג שירות של ח. סבן חו�
 אתה מדבר בעברית מלאה, ידידותי, קצר, עם אימוג'ים 🏗️🚚.
 מטרה: להבין מה הלקוח צריך (ברזל, בלוקים, מלט, חול, מכולה) ולתאם הובלה/איסוף.
 אם לקוח אומר 'בדיקה' - תענה 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?'
-אל תמציא מחירים. תשאל כמות, כתובת, תאריך.`;
+אל תמציא מחירים.
+
+כלל קריטי לכל פנייה על חומרים או הובלה (לדוגמה: "ברזל 2 טון לכפר סבא", בלוקים, מלט וכדומה):
+תמיד תשאל את הלקוח ותוודא:
+1. כמות (או קוטר/סוג הברזל או המלט)
+2. כתובת מדויקת לאספקה (עיר, רחוב ומספר)
+3. תאריך מבוקש להובלה`;
 
 async function generateSabanAiChatReply(text: string, history: any[] = [], from?: string): Promise<{ reply: string; suggested_branches: string[]; intent: string }> {
   const cleanText = String(text || '').trim();
@@ -672,7 +678,7 @@ async function generateSabanAiChatReply(text: string, history: any[] = [], from?
     };
   }
 
-  let reply = "שלום! כאן נציג ח. סבן חומרי בניין כפר ברא 🏗️. איזה חומר אתה צריך (ברזל, בלוקים, מלט, חול) והאם מדובר בהובלה לאתר או באיסוף עצמי מהמחסן?";
+  let reply = "שלום! נשמח לספק לך את כל חומרי הבניין הדרושים 🏗️🚚. כדי שנוכל לתאם הובלה מסודרת, אנא ציין: כמות וקוטר מבוקש, כתובת מדויקת למשלוח, ותאריך אספקה רצוי.";
   let intent = "general_inquiry";
   let suggested_branches = ["🚚 הזמנה והובלה", "🏪 איסוף עצמי", "🗑️ מכולות פסולת", "📍 מעקב הזמנה"];
 
@@ -681,12 +687,12 @@ async function generateSabanAiChatReply(text: string, history: any[] = [], from?
     try {
       const ai = new GoogleGenAI();
       const prompt = `
-System Prompt:
+System Instructions:
 ${SABAN_AI_SYSTEM_PROMPT}
 
 לקוח (${from || 'וואטסאפ'}): ${cleanText}
 
-כתוב מענה שירותי קצר בעברית (1-2 משפטים) עם אימוג'ים מתאימים:
+השב בקצרה (1-2 משפטים) בעברית עם אימוג'ים מתאימים. אם הלקוח ציין חומר והובלה (כמו ברזל לכפר סבא), תאשר שנקלט ותשאל אותו על כמות, כתובת ותאריך:
 `;
       const res = await ai.models.generateContent({
         model: 'gemini-3.8-flash',
@@ -756,13 +762,16 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       data = { text: rawBody, from: "unknown" };
     }
 
-    // 2. Sanitize to valid JSON
+    // 2. Sanitize to valid JSON with serverTimestamp()
+    const now = Date.now();
     const cleanPayload = {
       from: String(data.from || data.phone || data.waId || "972500000000").replace(/[^0-9]/g, ""),
       text: String(data.text || data.message || data.body || "").substring(0, 1000),
       name: String(data.name || data.pushName || "לקוח").substring(0, 100),
-      timestamp: Date.now(),
-      message_id: `wamid_fix_${Date.now()}`,
+      timestamp: now,
+      server_timestamp: { ".sv": "timestamp" },
+      created_at: { ".sv": "timestamp" },
+      message_id: `wamid_${now}`,
       source: "joni"
     };
 
@@ -843,26 +852,23 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       chosenBranchId = normalizedId;
       await updateSession(cleanPayload.from, { step: flow.next, lastChoice: normalizedId });
     } else {
-      // 7. Check if text matches branch keyword, otherwise call Free AI Chat engine!
-      const lower = cleanPayload.text.toLowerCase();
-      if (lower.includes('הובלה') || lower.includes('משלוח')) {
-        replyText = flows.order_delivery.text;
-        flowTitle = flows.order_delivery.title;
-        chosenBranchId = 'order_delivery';
-      } else if (lower.includes('איסוף') || lower.includes('מחסן')) {
-        replyText = flows.self_pickup.text;
-        flowTitle = flows.self_pickup.title;
-        chosenBranchId = 'self_pickup';
-      } else if (lower.includes('מכולה') || lower.includes('פסולת')) {
-        replyText = flows.waste_container.text;
-        flowTitle = flows.waste_container.title;
-        chosenBranchId = 'waste_container';
-      } else if (lower.includes('מעקב') || lower.includes('איפה')) {
-        replyText = flows.track_order.text;
-        flowTitle = flows.track_order.title;
-        chosenBranchId = 'track_order';
+      // 7. Check if user typed an exact single menu option ("1", "2", "3", "4"), otherwise FREE AI CHAT!
+      const trimmed = cleanPayload.text.trim().toLowerCase();
+      const isExactDigitMenu = ['1', '2', '3', '4'].includes(trimmed);
+
+      if (isExactDigitMenu) {
+        const idMap: Record<string, string> = {
+          '1': 'order_delivery',
+          '2': 'self_pickup',
+          '3': 'waste_container',
+          '4': 'track_order'
+        };
+        const mappedId = idMap[trimmed];
+        replyText = flows[mappedId].text;
+        flowTitle = flows[mappedId].title;
+        chosenBranchId = mappedId;
       } else {
-        // Free AI Chat Engine Response
+        // Free AI Chat Engine Response (e.g. "ברזל 2 טון לכפר סבא" -> asks for כמות, כתובת, תאריך)
         const aiResult = await generateSabanAiChatReply(cleanPayload.text, [], cleanPayload.from);
         replyText = aiResult.reply;
         flowTitle = 'מענה AI סבן חופשי';
