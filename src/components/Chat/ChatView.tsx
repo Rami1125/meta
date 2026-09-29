@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Send, 
@@ -39,6 +39,30 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [replyText, setReplyText] = useState('');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const quickTemplates = [
+    { id: 'q1', label: '🚚 יצא להובלה', text: 'היי {שם} 👋 ההזמנה #{מספר} יצאה להובלה עם הנהג ראמי 🚚\nצפי הגעה: {שעה}\n📍 {כתובת}' },
+    { id: 'q2', label: '🏪 מוכן לאיסוף', text: 'היי 👋 ההזמנה מוכנה לאיסוף במחסן כפר ברא 🏗️\nשעות פתיחה: 06:00-17:00\nרמי: 050-886-0896' },
+    { id: 'q3', label: '🗑️ מכולה בדרך', text: 'המכולה בדרך אליך 🗑️\nהנהג ייצור קשר 30 דק לפני הגעה. נא להכין גישה למשאית.' },
+    { id: 'q4', label: '📍 מעקב', text: 'תוכל לעקוב כאן: https://saban.app/track/{מספר}\nאו שלח לי מספר הזמנה ואבדוק לך' },
+    { id: 'q5', label: '💰 חשבונית', text: 'חשבונית מס #{מספר} מצורפת 💰\nלתשלום בביט / העברה. תודה!' },
+    { id: 'q6', label: '❓ מה המיקום?', text: 'היי, תוכל לשלוח מיקום מדויק בוואטסאפ? 📍\nלחץ על 📎 > מיקום > שלח מיקום נוכחי' }
+  ];
+
+  const setInput = (text: string) => {
+    let populated = text;
+    if (activeConv?.customerName) {
+      const firstName = activeConv.customerName.split(' ')[0] || activeConv.customerName;
+      populated = populated.replace('{שם}', firstName);
+    }
+    setReplyText(populated);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 20);
+  };
 
   useEffect(() => {
     if (!selectedConvId && conversations.length > 0) {
@@ -334,9 +358,26 @@ export const ChatView: React.FC<ChatViewProps> = ({
             })}
           </div>
 
+          {/* Quick-Reply Templates Bar */}
+          <div className="px-3 pt-2.5 bg-slate-900 border-t border-slate-800">
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {quickTemplates.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setInput(t.text)}
+                  className="whitespace-nowrap px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-slate-900 text-sm font-medium transition-all shrink-0 active:scale-95 shadow-sm"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Bottom Manual Reply Box */}
-          <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2 safe-bottom">
+          <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800/60 flex items-center gap-2 safe-bottom">
             <input
+              ref={inputRef}
               type="text"
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}

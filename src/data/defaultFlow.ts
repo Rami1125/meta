@@ -43,27 +43,27 @@ export const DEFAULT_FLOW: FlowTree = {
         sectionTitle: 'שירותי ח. סבן',
         rows: [
           {
-            id: 'delivery',
-            title: '🚚 הזמנת הובלה לאתר',
-            description: 'משאיות מנוף, פול-טריילר, חלוקה מהירה לאתרי בנייה',
+            id: 'order_delivery',
+            title: '🚚 הזמנה והובלה',
+            description: 'חומרי בניין עד האתר',
             targetBlockId: 'delivery_reply'
           },
           {
-            id: 'pickup',
-            title: '🏪 איסוף עצמי מסניף',
-            description: 'סניף החרש 10 או התלמיד 6, העמסה מיידית במקום',
+            id: 'self_pickup',
+            title: '🏪 איסוף עצמי',
+            description: 'המחסן בכפר ברא',
             targetBlockId: 'pickup_reply'
           },
           {
-            id: 'containers',
-            title: '🗑️ מכולות פינוי פסולת',
-            description: 'הצבת מכולה והחלפה לפינוי פסולת בניין מוסדר',
+            id: 'waste_container',
+            title: '🗑️ מכולות פסולת',
+            description: 'פינוי פסולת בניין',
             targetBlockId: 'containers_reply'
           },
           {
-            id: 'tracking',
-            title: '📍 מעקב אחרי הזמנה',
-            description: 'בירור סטטוס אספקה או בדיקת חשבונית קיימת',
+            id: 'track_order',
+            title: '📍 מעקב משלוח',
+            description: 'איפה ההזמנה שלי?',
             targetBlockId: 'tracking_reply'
           }
         ]
@@ -72,12 +72,12 @@ export const DEFAULT_FLOW: FlowTree = {
     {
       id: 'delivery_reply',
       type: 'text',
-      title: 'ענף הובלה (delivery)',
-      description: 'הנחיות להזמנת הובלה + חיבור ליצירת משימה',
+      title: 'ענף הובלה (order_delivery)',
+      description: 'בחירת חומר לבנייה',
       position: { x: 580, y: 30 },
       data: {
         type: 'text',
-        text: 'מעולה! 🚚 שלח מיקום + רשימת חומרים (מלט, בלוקים, ברזל, חול, גבס) ונציג סבן יחזור אליך תוך מספר דקות עם הצעת מחיר ומועד הגעה!',
+        text: '🚚 מעולה! איזה חומר צריך?\n1️⃣ ברזל\n2️⃣ בלוקים\n3️⃣ מלט\n4️⃣ חול/חצץ',
         targetBlockId: 'create_delivery_task'
       }
     },
@@ -100,24 +100,24 @@ export const DEFAULT_FLOW: FlowTree = {
     {
       id: 'pickup_reply',
       type: 'text',
-      title: 'ענף איסוף עצמי (pickup)',
-      description: 'מיקומי סניפי סבן',
+      title: 'ענף איסוף עצמי (self_pickup)',
+      description: 'איסוף עצמי מהמחסן בכפר ברא',
       position: { x: 580, y: 220 },
       data: {
         type: 'text',
-        text: '🏪 סניפי ח. סבן לאיסוף עצמי:\n• סניף ראשי: החרש 10\n• סניף לוגיסטי: התלמיד 6\n\nאנא שלח מה ברצונך לאסוף ומתי אתה מגיע כדי שנכין את המשטחים מראש! 📦',
+        text: '🏪 איסוף עצמי מהמחסן בכפר ברא.\nשלח מיקום או כתוב מה להכין לך?',
         targetBlockId: undefined
       }
     },
     {
       id: 'containers_reply',
       type: 'text',
-      title: 'ענף מכולות (containers)',
-      description: 'בקשת כתובת וגודל מכולה',
+      title: 'ענף מכולות (waste_container)',
+      description: 'בירור גודל מכולת פסולת',
       position: { x: 580, y: 400 },
       data: {
         type: 'text',
-        text: '🗑️ מחלקת פינוי פסולת ומכולות סבן:\nאנא שלח כתובת מדויקת + גודל מכולה מבוקש (8 קוב / 12 קוב / 16 קוב), והאם יש צורך בהיתר חניה.',
+        text: '🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב',
         targetBlockId: 'create_container_task'
       }
     },
@@ -140,12 +140,12 @@ export const DEFAULT_FLOW: FlowTree = {
     {
       id: 'tracking_reply',
       type: 'text',
-      title: 'ענף מעקב (tracking)',
-      description: 'בקשת מספר הזמנה לאיתור משאית',
+      title: 'ענף מעקב (track_order)',
+      description: 'בירור מספר הזמנה לאיתור משלוח',
       position: { x: 580, y: 580 },
       data: {
         type: 'text',
-        text: '📍 שירות מעקב משלוחים ח. סבן:\nאנא שלח את מספר ההזמנה או תעודת המשלוח (או שם האתר), ונבדוק מיד מיקום המשאית ב-GPS! 🚛',
+        text: '📍 שלח מספר הזמנה ואבדוק לך מיד',
         targetBlockId: 'saban_ai_assistant'
       }
     },
@@ -183,6 +183,12 @@ export const DEFAULT_FLOW: FlowTree = {
     {
       id: 'edge_delivery',
       source: 'welcome_menu',
+      sourceHandle: 'order_delivery',
+      target: 'delivery_reply'
+    },
+    {
+      id: 'edge_delivery_legacy',
+      source: 'welcome_menu',
       sourceHandle: 'delivery',
       target: 'delivery_reply'
     },
@@ -199,11 +205,23 @@ export const DEFAULT_FLOW: FlowTree = {
     {
       id: 'edge_pickup',
       source: 'welcome_menu',
+      sourceHandle: 'self_pickup',
+      target: 'pickup_reply'
+    },
+    {
+      id: 'edge_pickup_legacy',
+      source: 'welcome_menu',
       sourceHandle: 'pickup',
       target: 'pickup_reply'
     },
     {
       id: 'edge_containers',
+      source: 'welcome_menu',
+      sourceHandle: 'waste_container',
+      target: 'containers_reply'
+    },
+    {
+      id: 'edge_containers_legacy',
       source: 'welcome_menu',
       sourceHandle: 'containers',
       target: 'containers_reply'
@@ -215,6 +233,12 @@ export const DEFAULT_FLOW: FlowTree = {
     },
     {
       id: 'edge_tracking',
+      source: 'welcome_menu',
+      sourceHandle: 'track_order',
+      target: 'tracking_reply'
+    },
+    {
+      id: 'edge_tracking_legacy',
       source: 'welcome_menu',
       sourceHandle: 'tracking',
       target: 'tracking_reply'
