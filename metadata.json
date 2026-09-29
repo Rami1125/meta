@@ -1,0 +1,6 @@
+{
+  "name": "Saban WhatsApp Studio",
+  "description": "WhatsApp Menu Studio and incoming webhook bridge for H. Saban Building Materials (+972508860896) with JONI integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
