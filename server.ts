@@ -780,7 +780,7 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       }, 'joni');
     }
 
-    return res.status(200).json({ status: "ok", fixed: true, payload: cleanPayload, firebaseStatus: fbStatus });
+    return res.status(200).json({ success: true, received: cleanPayload, status: "ok", fixed: true, payload: cleanPayload, firebaseStatus: fbStatus });
 
   } catch (error: any) {
     console.error("JONI FIX ERROR:", error);
@@ -791,10 +791,10 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
 app.post('/api/webhooks/joni', handleJoniWebhook);
 app.post('/api/joni/incoming', handleJoniWebhook);
 app.get('/api/webhooks/joni', (_req: Request, res: Response) => {
-  res.json({ joni: "alive", time: Date.now() });
+  res.json({ status: "joni webhook alive", joni: "alive", time: Date.now() });
 });
 app.get('/api/joni/incoming', (_req: Request, res: Response) => {
-  res.json({ joni: "alive", time: Date.now() });
+  res.json({ status: "joni webhook alive", joni: "alive", time: Date.now() });
 });
 
 // Session store for WhatsApp interactive conversations
