@@ -81,7 +81,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-slate-950 p-6 space-y-6 text-right">
+    <div className="flex-1 h-full overflow-y-auto bg-slate-950 p-3.5 md:p-6 space-y-4 md:space-y-6 text-right pb-24 md:pb-6">
       
       {/* Top Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-orange-950/40 p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-4">

@@ -8,7 +8,8 @@ import {
   Menu, 
   Phone, 
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  ArrowRight
 } from 'lucide-react';
 import { FlowTree, ListMenuRow } from '../../types/studio';
 
@@ -149,38 +150,45 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-md shadow-2xl flex flex-col h-[740px] max-h-[92vh] overflow-hidden text-right">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md md:p-4">
+      <div className="bg-[#0b141a] border-0 md:border md:border-slate-700/80 rounded-none md:rounded-3xl w-full h-full md:max-w-md md:h-[760px] md:max-h-[92vh] shadow-2xl flex flex-col overflow-hidden text-right">
         
-        {/* Phone Header Mockup */}
-        <div className="bg-emerald-800 text-white px-4 py-3 flex items-center justify-between border-b border-emerald-900/60 shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-950 flex items-center justify-center font-bold text-amber-400 border border-emerald-600 shadow-inner">
+        {/* Authentic WhatsApp Phone Header */}
+        <div className="bg-[#075E54] text-white px-3 md:px-4 py-2.5 safe-top flex items-center justify-between border-b border-emerald-950/60 shadow-md">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={onClose}
+              className="p-1.5 -mr-1 text-emerald-100 hover:text-white rounded-lg active:scale-95"
+              title="חזור"
+            >
+              <ArrowRight className="w-5 h-5 stroke-[2.4]" />
+            </button>
+            <div className="w-9 h-9 rounded-full bg-emerald-950 flex items-center justify-center font-bold text-amber-400 border border-emerald-600 shadow-inner shrink-0 text-xs">
               סבן
             </div>
             <div>
               <div className="font-bold text-sm leading-tight flex items-center gap-1.5">
-                <span>ח. סבן חומרי בניין בע״מ</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
+                <span>ח. סבן חומרי בניין</span>
+                <span className="w-2 h-2 rounded-full bg-[#25D366]"></span>
               </div>
-              <div className="text-[11px] text-emerald-100/90 font-mono dir-ltr flex items-center gap-2">
+              <div className="text-[10px] text-emerald-200/90 font-mono dir-ltr flex items-center gap-1.5">
                 <span>+972 50-8860896</span>
-                <span className="text-[10px] bg-emerald-900/70 px-1.5 py-0.2 rounded text-emerald-200">עסקי מאומת</span>
+                <span className="text-[9px] bg-emerald-900/80 px-1 rounded text-emerald-300">עסקי רשמי</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button 
               onClick={resetChat}
               title="איפוס שיחה"
-              className="p-1.5 text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg transition-colors"
+              className="w-10 h-10 min-w-[40px] flex items-center justify-center text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg transition-colors active:scale-95"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button 
               onClick={onClose}
-              className="p-1.5 text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg transition-colors"
+              className="w-10 h-10 min-w-[40px] flex items-center justify-center text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg transition-colors active:scale-95"
             >
               <X className="w-5 h-5" />
             </button>
@@ -300,55 +308,55 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         </div>
 
         {/* Quick Test Chips for H. Saban options */}
-        <div className="bg-slate-950 px-3 py-2 border-t border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          <span className="text-[10px] text-slate-500 shrink-0 font-medium">בדיקות מהירות:</span>
+        <div className="bg-slate-950 px-3 py-2 border-t border-slate-800 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+          <span className="text-[11px] text-slate-500 shrink-0 font-medium">בדיקות:</span>
           <button
             onClick={() => triggerIncoming('שלום, אשמח לתפריט חומרי בניין')}
-            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs shrink-0 border border-slate-700 font-medium"
+            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs shrink-0 border border-slate-700 font-medium min-h-[38px] flex items-center"
           >
-            👋 שלום (פתיחת תפריט)
+            👋 שלום (תפריט ראשי)
           </button>
           <button
             onClick={() => triggerIncoming('הזמנת הובלה', 'delivery', '🚚 הזמנת הובלה לאתר')}
-            className="px-2.5 py-1 bg-orange-950/80 hover:bg-orange-900 text-orange-200 rounded-lg text-xs shrink-0 border border-orange-800/60 font-medium"
+            className="px-3 py-2 bg-orange-950/80 hover:bg-orange-900 active:scale-95 text-orange-200 rounded-xl text-xs shrink-0 border border-orange-800/60 font-medium min-h-[38px] flex items-center"
           >
             🚚 1. הובלה
           </button>
           <button
             onClick={() => triggerIncoming('איסוף עצמי', 'pickup', '🏪 איסוף עצמי מסניף')}
-            className="px-2.5 py-1 bg-blue-950/80 hover:bg-blue-900 text-blue-200 rounded-lg text-xs shrink-0 border border-blue-800/60 font-medium"
+            className="px-3 py-2 bg-blue-950/80 hover:bg-blue-900 active:scale-95 text-blue-200 rounded-xl text-xs shrink-0 border border-blue-800/60 font-medium min-h-[38px] flex items-center"
           >
             🏪 2. איסוף עצמי
           </button>
           <button
             onClick={() => triggerIncoming('מכולות פינוי פסולת', 'containers', '🗑️ מכולות פינוי פסולת')}
-            className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-900 text-amber-200 rounded-lg text-xs shrink-0 border border-amber-800/60 font-medium"
+            className="px-3 py-2 bg-amber-950/80 hover:bg-amber-900 active:scale-95 text-amber-200 rounded-xl text-xs shrink-0 border border-amber-800/60 font-medium min-h-[38px] flex items-center"
           >
             🗑️ 3. מכולות
           </button>
           <button
             onClick={() => triggerIncoming('מעקב אחרי הזמנה', 'tracking', '📍 מעקב אחרי הזמנה')}
-            className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-900 text-purple-200 rounded-lg text-xs shrink-0 border border-purple-800/60 font-medium"
+            className="px-3 py-2 bg-purple-950/80 hover:bg-purple-900 active:scale-95 text-purple-200 rounded-xl text-xs shrink-0 border border-purple-800/60 font-medium min-h-[38px] flex items-center"
           >
             📍 4. מעקב
           </button>
         </div>
 
         {/* Input Bar */}
-        <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+        <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2 safe-bottom shrink-0">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="הקלד הודעה כלקוח (למשל: 'היי' או 'איפה המשלוח?')..."
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            placeholder="הקלד הודעה כלקוח (למשל: 'היי')..."
+            className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-4 py-2.5 text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 min-h-[44px]"
           />
           <button
             type="submit"
             disabled={!inputText.trim() || isLoading}
-            className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white flex items-center justify-center transition-colors shadow-md"
+            className="w-12 h-12 min-w-[44px] min-h-[44px] rounded-2xl bg-[#25D366] hover:bg-[#20ba5a] active:scale-90 disabled:opacity-50 text-slate-950 flex items-center justify-center transition-all shadow-md shrink-0"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5 stroke-[2.5]" />
           </button>
         </form>
 

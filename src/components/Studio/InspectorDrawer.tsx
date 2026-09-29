@@ -101,29 +101,42 @@ export const InspectorDrawer: React.FC<InspectorDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 left-0 w-96 bg-slate-900 border-r border-slate-800 shadow-2xl z-40 flex flex-col text-right animate-in slide-in-from-left duration-200">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
-        <div className="flex items-center gap-2">
-          <Sliders className="w-5 h-5 text-orange-500" />
-          <h2 className="font-bold text-slate-100 text-sm">עריכת בלוק</h2>
+    <>
+      {/* Mobile Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 md:hidden transition-opacity"
+        onClick={onClose}
+      />
+
+      <div className="fixed z-40 bg-slate-900 border-slate-800 shadow-2xl flex flex-col text-right transition-transform duration-300
+        inset-x-0 bottom-0 max-h-[85vh] rounded-t-3xl border-t animate-in slide-in-from-bottom
+        md:inset-y-0 md:left-0 md:right-auto md:w-96 md:rounded-none md:border-r md:animate-in md:slide-in-from-left
+      ">
+        {/* Mobile Drag Pill */}
+        <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mt-2.5 mb-1 md:hidden" />
+
+        {/* Header */}
+        <div className="p-3.5 md:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-5 h-5 text-orange-500" />
+            <h2 className="font-bold text-slate-100 text-sm">עריכת בלוק</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-4 py-2 min-h-[44px] bg-orange-600 hover:bg-orange-500 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-md transition-all"
+            >
+              <Check className="w-4 h-4 stroke-[2.5]" />
+              <span>שמור</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors active:scale-95"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-semibold shadow-md transition-colors"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>שמור שינויים</span>
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
 
       {/* Form Fields */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-slate-200">
@@ -556,5 +569,6 @@ export const InspectorDrawer: React.FC<InspectorDrawerProps> = ({
 
       </div>
     </div>
+    </>
   );
 };

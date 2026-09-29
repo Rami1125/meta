@@ -1,5 +1,38 @@
 @import "tailwindcss";
 
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+/* Force 16px minimum on all form elements to prevent auto-zooming on Samsung & iOS devices */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* Safe area insets for notches, punch-holes, and gesture bars */
+.safe-top {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.safe-left {
+  padding-left: max(8px, env(safe-area-inset-left));
+}
+.safe-right {
+  padding-right: max(8px, env(safe-area-inset-right));
+}
+
+/* 120Hz smooth scrolling */
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 @layer utilities {
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {

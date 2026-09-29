@@ -12,7 +12,11 @@ import {
   Send, 
   ExternalLink,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  Smartphone,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { StudioSettings } from '../../types/studio';
 
@@ -20,12 +24,20 @@ interface SettingsViewProps {
   settings: StudioSettings;
   onSaveSettings: (settings: Partial<StudioSettings>) => Promise<void>;
   onTestWebhook: (text: string) => Promise<any>;
+  isInstallable?: boolean;
+  isInstalled?: boolean;
+  onInstall?: () => void;
+  isIOS?: boolean;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   onSaveSettings,
   onTestWebhook,
+  isInstallable,
+  isInstalled,
+  onInstall,
+  isIOS
 }) => {
   const [formData, setFormData] = useState<StudioSettings>({ ...settings });
   const [isSaving, setIsSaving] = useState(false);
@@ -100,10 +112,61 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20 md:pb-6">
         
         {/* Left Column: Fixed Business Details & JONI Bridge */}
         <div className="space-y-6">
+
+          {/* PWA Mobile App Section */}
+          <div className="p-5 rounded-3xl bg-gradient-to-tr from-slate-900 via-slate-900 to-[#075E54]/30 border border-[#25D366]/40 shadow-xl space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#075E54] to-[#25D366] flex items-center justify-center text-white shadow-md">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100 flex items-center gap-1.5">
+                    <span>אפליקציית מובייל (PWA)</span>
+                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2 py-0.2 rounded-full font-mono">
+                      Samsung & Android
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">מותאם למסך 6.8" 120Hz ו-Note 23 Ultra</p>
+                </div>
+              </div>
+
+              {isInstalled && (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/20">
+                  מותקן במכשיר ✓
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              התקנת סבן סטודיו כאפליקציית מובייל אמיתית מאפשרת פתיחה ישירה ממסך הבית, תצוגת מסך מלא ללא סרגל דפדפן, תגובתיות 120Hz חלקה ותמיכה מלאה בפינץ' וזום.
+            </p>
+
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
+              <div className="text-[11px] text-slate-400">
+                {isInstalled 
+                  ? 'סטטוס: האפליקציה פועלת במצב Standalone עצמאי' 
+                  : isIOS 
+                    ? 'לחץ שתף (Share) ב-Safari ובחר "הוסף למסך הבית"' 
+                    : 'לחץ על הכפתור להתקנה מהירה של ה-PWA למכשיר'}
+              </div>
+
+              {!isInstalled && (
+                <button
+                  type="button"
+                  onClick={onInstall}
+                  className="flex items-center gap-2 px-4 py-2.5 min-h-[44px] bg-[#25D366] hover:bg-[#20ba5a] active:scale-95 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-[#25D366]/25 transition-all"
+                >
+                  <Download className="w-4 h-4 stroke-[2.5]" />
+                  <span>התקן כאפליקציה</span>
+                </button>
+              )}
+            </div>
+          </div>
           
           {/* Business & Flow Settings */}
           <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">

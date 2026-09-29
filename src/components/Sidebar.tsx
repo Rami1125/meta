@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 bg-slate-900 border-l border-slate-800 flex flex-col justify-between shrink-0 select-none">
+    <aside className="hidden md:flex w-64 bg-slate-900 border-l border-slate-800 flex-col justify-between shrink-0 select-none">
       {/* Top Header */}
       <div>
         <div className="p-4 border-b border-slate-800/80 bg-gradient-to-b from-slate-900 to-slate-950/60">

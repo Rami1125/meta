@@ -94,21 +94,21 @@ export const LogsView: React.FC<LogsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-slate-950 overflow-hidden text-right">
+    <div className="flex-1 h-full flex flex-col bg-slate-950 overflow-hidden text-right pb-16 md:pb-0">
       
       {/* Top Controls & Filters */}
-      <div className="p-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="p-3 md:p-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
         
         {/* Title and stats */}
         <div>
-          <h2 className="font-bold text-slate-100 text-base flex items-center gap-2">
-            <span>יומני תפריט WhatsApp (Logs)</span>
+          <h2 className="font-bold text-slate-100 text-sm md:text-base flex items-center gap-2">
+            <span>יומני WhatsApp (Logs)</span>
             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono">
-              {filteredLogs.length} רשומות
+              {filteredLogs.length}
             </span>
           </h2>
-          <p className="text-xs text-slate-400">
-            מעקב אחר כל פניות הלקוחות, בחירות בתפריט והודעות שנשלחו אוטומטית
+          <p className="text-[11px] md:text-xs text-slate-400">
+            מעקב פניות, תפריטים ומענה אוטומטי
           </p>
         </div>
 
@@ -116,16 +116,16 @@ export const LogsView: React.FC<LogsViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={exportToExcel}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-800/20 transition-all hover:scale-[1.02]"
+            className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-800/20 transition-all"
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Export ל-Excel</span>
+            <FileSpreadsheet className="w-4 h-4 stroke-[2.2]" />
+            <span>Excel</span>
           </button>
 
           <button
             onClick={onRefresh}
             title="רענן יומנים"
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors active:scale-95"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -137,7 +137,7 @@ export const LogsView: React.FC<LogsViewProps> = ({
               }
             }}
             title="נקה יומנים"
-            className="p-2 bg-slate-800 hover:bg-red-900/40 text-slate-400 hover:text-red-300 rounded-xl transition-colors"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-slate-800 hover:bg-red-900/40 text-slate-400 hover:text-red-300 rounded-xl transition-colors active:scale-95"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -145,33 +145,33 @@ export const LogsView: React.FC<LogsViewProps> = ({
       </div>
 
       {/* Filter Row */}
-      <div className="px-4 py-2.5 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-3 md:px-4 py-2.5 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
         
         {/* Search */}
-        <div className="relative w-72">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={phoneSearch}
             onChange={(e) => setPhoneSearch(e.target.value)}
             placeholder="סינון לפי טלפון, שם או טקסט..."
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-8 pl-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500"
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-base md:text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 min-h-[44px]"
           />
         </div>
 
         {/* Menu category filters */}
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto py-1">
           {[
-            { id: 'all', label: 'כל התפריטים' },
+            { id: 'all', label: 'הכל' },
             { id: 'delivery', label: '🚚 הובלה' },
-            { id: 'pickup', label: '🏪 איסוף עצמי' },
+            { id: 'pickup', label: '🏪 איסוף' },
             { id: 'containers', label: '🗑️ מכולות' },
-            { id: 'tracking', label: '📍 מעקב הזמנה' }
+            { id: 'tracking', label: '📍 מעקב' }
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => setMenuFilter(item.id)}
-              className={`px-3 py-1 rounded-xl text-xs transition-colors ${
+              className={`px-3 py-1.5 min-h-[38px] rounded-xl text-xs transition-colors active:scale-95 shrink-0 ${
                 menuFilter === item.id
                   ? 'bg-orange-600 text-white font-semibold shadow-sm'
                   : 'bg-slate-800/80 hover:bg-slate-800 text-slate-400'

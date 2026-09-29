@@ -31,6 +31,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.resolve(__dirname, 'public')));
 
 // In-Memory Database Store (with Saban defaults)
 let activeFlow: FlowTree = JSON.parse(JSON.stringify(DEFAULT_FLOW));

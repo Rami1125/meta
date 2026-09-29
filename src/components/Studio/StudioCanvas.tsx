@@ -50,13 +50,19 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
   // Connecting mode (clicking handle then clicking target)
   const [connectingSource, setConnectingSource] = useState<{ nodeId: string; handleId?: string } | null>(null);
 
+  // Touch & Pinch-to-zoom state for mobile / Samsung Note 23 Ultra
+  const [initialPinchDist, setInitialPinchDist] = useState<number | null>(null);
+  const [initialPinchScale, setInitialPinchScale] = useState<number>(1);
+  const [lastTouchPos, setLastTouchPos] = useState<{ x: number; y: number } | null>(null);
+  const [lastTapTime, setLastTapTime] = useState<number>(0);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setCurrentFlow(flow);
   }, [flow]);
 
-  // Handle Pan canvas
+  // Handle Pan canvas (Mouse)
   const handleMouseDown = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('.cursor-pointer')) return;
     setIsPanning(true);
@@ -87,6 +93,102 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
   };
 
   const handleMouseUp = () => {
+    setIsPanning(false);
+    setDraggingNodeId(null);
+  };
+
+  // Touch Handlers for Mobile: Pinch-to-Zoom, 2-Finger Drag, Double-Tap to Add
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // 2 fingers: Pinch to Zoom and 2-finger pan
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      setInitialPinchDist(dist);
+      setInitialPinchScale(scale);
+      setLastTouchPos({
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      });
+      setIsPanning(false);
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const now = Date.now();
+      const isCard = Boolean((e.target as HTMLElement).closest('.cursor-pointer'));
+
+      // Double-tap on canvas (not on a card) to add block
+      if (!isCard && now - lastTapTime < 320) {
+        setIsAddModalOpen(true);
+        setLastTapTime(0);
+        return;
+      }
+      setLastTapTime(now);
+
+      if (!isCard) {
+        setIsPanning(true);
+        setPanStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y });
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // 2-Finger gesture: Pinch to Zoom & Pan
+    if (e.touches.length === 2 && initialPinchDist) {
+      const currentDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const ratio = currentDist / initialPinchDist;
+      const newScale = Math.min(Math.max(initialPinchScale * ratio, 0.4), 1.8);
+      setScale(Number(newScale.toFixed(2)));
+
+      // 2-finger pan
+      const currentCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+      if (lastTouchPos) {
+        const dx = currentCenter.x - lastTouchPos.x;
+        const dy = currentCenter.y - lastTouchPos.y;
+        setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+      }
+      setLastTouchPos(currentCenter);
+      return;
+    }
+
+    // 1-Finger canvas pan
+    if (e.touches.length === 1 && isPanning) {
+      const touch = e.touches[0];
+      setPan({
+        x: touch.clientX - panStart.x,
+        y: touch.clientY - panStart.y,
+      });
+      return;
+    }
+
+    // 1-Finger node dragging on mobile
+    if (e.touches.length === 1 && draggingNodeId) {
+      const touch = e.touches[0];
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+
+      const newX = Math.round((touch.clientX - containerRect.left - pan.x) / scale - dragOffset.x);
+      const newY = Math.round((touch.clientY - containerRect.top - pan.y) / scale - dragOffset.y);
+
+      setCurrentFlow(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n)
+      }));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setInitialPinchDist(null);
+    setLastTouchPos(null);
     setIsPanning(false);
     setDraggingNodeId(null);
   };
@@ -406,38 +508,45 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
   };
 
   return (
-    <div className="relative flex-1 h-full flex flex-col bg-slate-950 overflow-hidden select-none">
+    <div className="relative flex-1 h-full flex flex-col bg-slate-950 overflow-hidden select-none pb-16 md:pb-0">
       
       {/* Top Floating Control Bar */}
-      <div className="absolute top-4 right-4 left-4 z-20 flex items-center justify-between pointer-events-none">
+      <div className="absolute top-2.5 md:top-4 right-2.5 left-2.5 md:right-4 md:left-4 z-20 flex flex-col md:flex-row md:items-center justify-between gap-2 pointer-events-none">
         
         {/* Left: Flow Name and Status */}
-        <div className="bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/80 shadow-lg flex items-center gap-3 pointer-events-auto">
-          <div className="w-8 h-8 rounded-xl bg-orange-600/20 text-orange-400 border border-orange-500/30 flex items-center justify-center">
-            <Workflow className="w-4 h-4" />
+        <div className="bg-slate-900/95 backdrop-blur-md px-3 py-1.5 md:px-4 md:py-2 rounded-2xl border border-slate-700/80 shadow-lg flex items-center justify-between md:justify-start gap-2.5 pointer-events-auto">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-orange-600/20 text-orange-400 border border-orange-500/30 flex items-center justify-center">
+              <Workflow className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-100 text-xs flex items-center gap-1.5">
+                <span className="truncate max-w-[140px] md:max-w-none">{currentFlow.name}</span>
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded-full font-mono">
+                  {currentFlow.nodes.length}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400 hidden sm:block">
+                מספר: <span className="text-emerald-400 font-mono">+972 50-8860896</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="font-bold text-slate-100 text-xs flex items-center gap-2">
-              <span>{currentFlow.name}</span>
-              <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono">
-                {currentFlow.nodes.length} בלוקים
-              </span>
-            </div>
-            <div className="text-[10px] text-slate-400">
-              מספר מקושר: <span className="text-emerald-400 font-mono">+972 50-8860896</span>
-            </div>
+
+          {/* Quick Double-Tap Badge Tip for Mobile */}
+          <div className="md:hidden text-[10px] text-orange-300/80 bg-orange-950/40 px-2 py-0.5 rounded-lg border border-orange-800/40 flex items-center gap-1">
+            <span>לחיצה כפולה להוספה ✨</span>
           </div>
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pointer-events-auto py-1">
           {connectingSource && (
-            <div className="flex items-center gap-2 bg-orange-600/90 text-white px-3 py-1.5 rounded-xl text-xs shadow-lg animate-pulse">
+            <div className="flex items-center gap-1.5 bg-orange-600 text-white px-2.5 py-1.5 rounded-xl text-xs shadow-lg animate-pulse min-h-[44px]">
               <Link className="w-3.5 h-3.5" />
-              <span>לחץ על בלוק היעד לחיבור...</span>
+              <span className="text-[11px]">בחר בלוק יעד...</span>
               <button
                 onClick={() => setConnectingSource(null)}
-                className="ml-1 bg-black/30 hover:bg-black/50 px-2 py-0.5 rounded text-[10px]"
+                className="bg-black/30 hover:bg-black/50 px-2 py-1 rounded text-[10px]"
               >
                 בטל
               </button>
@@ -446,65 +555,66 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-orange-600/20 transition-all hover:scale-[1.02]"
+            className="flex items-center gap-1 px-3 py-2 min-h-[44px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
           >
-            <Plus className="w-4 h-4" />
-            <span>הוסף בלוק</span>
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>בלוק</span>
           </button>
 
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all ${
+            className={`flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-xl text-xs font-semibold shadow-md active:scale-95 transition-all ${
               saveSuccess
                 ? 'bg-emerald-600 text-white'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
             }`}
           >
-            {saveSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4 text-orange-400" />}
-            <span>{isSaving ? 'שומר...' : saveSuccess ? 'נשמר בהצלחה!' : 'שמור עץ'}</span>
+            {saveSuccess ? <Check className="w-4 h-4 stroke-[2.5]" /> : <Save className="w-4 h-4 text-orange-400" />}
+            <span>{isSaving ? 'שומר' : saveSuccess ? 'נשמר!' : 'שמור'}</span>
           </button>
 
           <button
             onClick={onResetFlow}
             title="איפוס לעץ ברירת המחדל של סבן"
-            className="p-2 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 shadow-md transition-colors"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-slate-900/90 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 shadow-md active:scale-95 transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
 
           <button
             onClick={onOpenSimulator}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-700/20 transition-all hover:scale-[1.02]"
+            className="flex items-center gap-1 px-3 py-2 min-h-[44px] bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 rounded-xl text-xs font-bold shadow-md shadow-emerald-700/20 active:scale-95 transition-all"
           >
-            <Smartphone className="w-4 h-4" />
-            <span>סימולטור WhatsApp</span>
+            <Smartphone className="w-4 h-4 stroke-[2.5]" />
+            <span className="hidden sm:inline">סימולטור WhatsApp</span>
+            <span className="sm:hidden">בדיקה</span>
           </button>
         </div>
       </div>
 
       {/* Zoom / Viewport Controls Bottom Left */}
-      <div className="absolute bottom-6 left-6 z-20 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl text-slate-300">
+      <div className="absolute bottom-20 md:bottom-6 left-3 md:left-6 z-20 flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1 rounded-2xl border border-slate-800 shadow-xl text-slate-300">
         <button
           onClick={() => setScale(s => Math.min(s + 0.15, 1.8))}
-          className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-slate-800 rounded-xl transition-colors active:scale-95"
           title="זום פנימה"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
-        <span className="text-[11px] font-mono px-2 text-slate-400">
+        <span className="text-[11px] font-mono px-1 text-slate-400">
           {Math.round(scale * 100)}%
         </span>
         <button
           onClick={() => setScale(s => Math.max(s - 0.15, 0.4))}
-          className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-slate-800 rounded-xl transition-colors active:scale-95"
           title="זום החוצה"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
-          onClick={() => { setScale(1); setPan({ x: 40, y: 30 }); }}
-          className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
+          onClick={() => { setScale(1); setPan({ x: 20, y: 40 }); }}
+          className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-slate-800 rounded-xl transition-colors active:scale-95"
           title="איפוס מיקום"
         >
           <Maximize2 className="w-4 h-4" />
@@ -517,7 +627,10 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        className="w-full h-full relative cursor-grab active:cursor-grabbing overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="w-full h-full relative cursor-grab active:cursor-grabbing overflow-hidden touch-none"
         style={{
           backgroundImage: `
             radial-gradient(circle at 1px 1px, #334155 1px, transparent 0),
@@ -557,6 +670,20 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
                     x: Math.round((e.clientX - rect.left - pan.x) / scale - node.position.x),
                     y: Math.round((e.clientY - rect.top - pan.y) / scale - node.position.y)
                   });
+                }
+              }}
+              onTouchStart={(e) => {
+                if (e.touches.length === 1) {
+                  e.stopPropagation();
+                  setDraggingNodeId(node.id);
+                  const touch = e.touches[0];
+                  const rect = containerRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setDragOffset({
+                      x: Math.round((touch.clientX - rect.left - pan.x) / scale - node.position.x),
+                      y: Math.round((touch.clientY - rect.top - pan.y) / scale - node.position.y)
+                    });
+                  }
                 }
               }}
             >

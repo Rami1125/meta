@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { MobileHeader } from './components/Navigation/MobileHeader';
+import { MobileBottomNav } from './components/Navigation/MobileBottomNav';
+import { PWAInstallBanner } from './components/Navigation/PWAInstallBanner';
+import { usePWAInstall } from './hooks/usePWAInstall';
 import { StudioCanvas } from './components/Studio/StudioCanvas';
 import { ChatView } from './components/Chat/ChatView';
 import { LogsView } from './components/Logs/LogsView';
@@ -31,6 +35,9 @@ export default function App() {
   const [tasks, setTasks] = useState<StudioTask[]>(INITIAL_TASKS);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // PWA Install State & Hook
+  const { isInstallable, isInstalled, isIOS, promptInstall } = usePWAInstall();
 
   // Load all data from API on start
   const refreshData = useCallback(async () => {
@@ -142,8 +149,22 @@ export default function App() {
   const pendingTasksCount = tasks.filter(t => t.status === 'pending').length;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-['Assistant',sans-serif]">
-      {/* Left Navigation Sidebar */}
+    <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-['Assistant',sans-serif]">
+      {/* Mobile Top Header */}
+      <MobileHeader
+        onOpenSimulator={() => setIsSimulatorOpen(true)}
+        isInstallable={isInstallable}
+        onInstall={promptInstall}
+      />
+
+      {/* Android/iOS PWA Install Banner */}
+      <PWAInstallBanner
+        isInstallable={isInstallable}
+        onInstall={promptInstall}
+        isIOS={isIOS}
+      />
+
+      {/* Desktop Left Navigation Sidebar (Hidden on mobile) */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -195,9 +216,20 @@ export default function App() {
             settings={settings}
             onSaveSettings={handleSaveSettings}
             onTestWebhook={handleTestWebhook}
+            isInstallable={isInstallable}
+            isInstalled={isInstalled}
+            onInstall={promptInstall}
+            isIOS={isIOS}
           />
         )}
       </main>
+
+      {/* Mobile Bottom Navigation Bar (WhatsApp style, hidden on desktop) */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        pendingTasksCount={pendingTasksCount}
+      />
 
       {/* WhatsApp Client Simulator Drawer/Modal */}
       <WhatsAppSimulator

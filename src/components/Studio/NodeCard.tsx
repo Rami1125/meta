@@ -108,7 +108,7 @@ export const NodeCard: React.FC<NodeCardProps> = ({
         e.stopPropagation();
         onSelect(node);
       }}
-      className={`relative w-80 bg-slate-900/95 backdrop-blur-md rounded-2xl border transition-all shadow-xl cursor-pointer group ${
+      className={`relative w-[90vw] max-w-[340px] md:w-80 min-h-[120px] bg-slate-900/95 backdrop-blur-md rounded-2xl border transition-all shadow-xl cursor-pointer group select-none ${
         isSelected
           ? 'ring-2 ring-orange-500 border-orange-500 shadow-orange-500/20'
           : `border-slate-700/80 hover:border-slate-500`
@@ -116,16 +116,16 @@ export const NodeCard: React.FC<NodeCardProps> = ({
     >
       {/* Input connector handle on right (for RTL canvas incoming connection) */}
       <div 
-        className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-800 border-2 border-slate-400 group-hover:border-orange-400 flex items-center justify-center shadow-md transition-colors"
+        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-slate-800 border-2 border-slate-400 group-hover:border-orange-400 flex items-center justify-center shadow-md transition-colors z-10"
         title="חיבור נכנס"
       >
-        <span className="w-2 h-2 rounded-full bg-slate-400 group-hover:bg-orange-400"></span>
+        <span className="w-2.5 h-2.5 rounded-full bg-slate-400 group-hover:bg-orange-400"></span>
       </div>
 
       {/* Header */}
       <div className={`p-3.5 rounded-t-2xl bg-gradient-to-r ${meta.color} flex items-center justify-between text-white shadow-sm`}>
         <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-black/25 rounded-lg">
+          <div className="p-2 bg-black/25 rounded-xl">
             <Icon className="w-4 h-4 text-white" />
           </div>
           <div>
@@ -137,7 +137,7 @@ export const NodeCard: React.FC<NodeCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {node.isRoot && (
             <span className="text-[10px] font-bold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full shadow-sm">
               ראשי
@@ -149,9 +149,9 @@ export const NodeCard: React.FC<NodeCardProps> = ({
               onSelect(node);
             }}
             title="ערוך הגדרות"
-            className="p-1 rounded-md hover:bg-white/20 text-white/90 hover:text-white transition-colors"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl hover:bg-white/20 text-white/90 hover:text-white flex items-center justify-center transition-colors active:scale-95"
           >
-            <Settings2 className="w-3.5 h-3.5" />
+            <Settings2 className="w-4 h-4" />
           </button>
           {!node.isRoot && (
             <button
@@ -160,9 +160,9 @@ export const NodeCard: React.FC<NodeCardProps> = ({
                 onDelete(node.id);
               }}
               title="מחק בלוק"
-              className="p-1 rounded-md hover:bg-red-500/30 text-white/90 hover:text-red-200 transition-colors"
+              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl hover:bg-red-500/30 text-white/90 hover:text-red-200 flex items-center justify-center transition-colors active:scale-95"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -206,14 +206,14 @@ export const NodeCard: React.FC<NodeCardProps> = ({
                     </div>
                   </div>
 
-                  {/* Output Port for this Row */}
-                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Output Port for this Row */}
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {row.targetBlockId ? (
-                      <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-800/60">
+                      <span className="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-1 rounded-lg font-mono border border-emerald-800/60">
                         ➜ {row.targetBlockId}
                       </span>
                     ) : (
-                      <span className="text-[9px] text-amber-400/80 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-800/30">
+                      <span className="text-[10px] text-amber-400/90 bg-amber-950/40 px-2 py-1 rounded-lg border border-amber-800/30">
                         ללא יעד
                       </span>
                     )}
@@ -222,10 +222,10 @@ export const NodeCard: React.FC<NodeCardProps> = ({
                         e.stopPropagation();
                         if (onStartConnect) onStartConnect(node.id, row.id);
                       }}
-                      className="w-5 h-5 rounded-full bg-emerald-600/30 hover:bg-emerald-500 text-emerald-300 hover:text-white flex items-center justify-center transition-colors"
+                      className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-emerald-600/30 hover:bg-emerald-500 text-emerald-300 hover:text-white flex items-center justify-center transition-all active:scale-90 shadow-sm"
                       title="חבר ענף זה לבלוק יעד"
                     >
-                      <ArrowLeft className="w-3 h-3" />
+                      <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
                     </button>
                   </div>
                 </div>
@@ -317,10 +317,10 @@ export const NodeCard: React.FC<NodeCardProps> = ({
                   e.stopPropagation();
                   if (onStartConnect) onStartConnect(node.id);
                 }}
-                className="w-5 h-5 rounded-full bg-slate-800 hover:bg-orange-500 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-slate-800 hover:bg-orange-500 text-slate-300 hover:text-white flex items-center justify-center transition-all active:scale-90 shadow-sm"
                 title="חבר בלוק זה לשלב הבא"
               >
-                <ArrowLeft className="w-3 h-3" />
+                <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
           </div>

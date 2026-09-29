@@ -11,7 +11,8 @@ import {
   Filter, 
   CheckCheck,
   Building2,
-  RefreshCw
+  RefreshCw,
+  ArrowRight
 } from 'lucide-react';
 import { Conversation, ChatMessage, StudioTask } from '../../types/studio';
 import { TaskModal } from './TaskModal';
@@ -30,7 +31,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onCreateTask,
 }) => {
   const [selectedConvId, setSelectedConvId] = useState<string>(
-    conversations[0]?.id || ''
+    // On desktop start with first conv, on mobile let user pick
+    typeof window !== 'undefined' && window.innerWidth < 768 ? '' : (conversations[0]?.id || '')
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [menuFilter, setMenuFilter] = useState<string>('all');
@@ -89,7 +91,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     <div className="flex-1 h-full flex bg-slate-950 overflow-hidden">
       
       {/* Left List of Conversations */}
-      <div className="w-80 md:w-96 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
+      <div className={`${selectedConvId ? 'hidden md:flex' : 'flex'} w-full md:w-96 bg-slate-900 border-l border-slate-800 flex-col shrink-0 pb-16 md:pb-0`}>
         
         {/* Search & Filter Header */}
         <div className="p-3.5 border-b border-slate-800 space-y-2.5 bg-slate-950/60">
@@ -103,9 +105,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <button
               onClick={onRefresh}
               title="רענן שיחות"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+              className="w-10 h-10 min-w-[40px] flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors active:scale-95"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-4 h-4" />
             </button>
           </div>
 
@@ -117,7 +119,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="חיפוש לפי מספר, שם או תוכן..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-3 py-2.5 text-base md:text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 min-h-[44px]"
             />
           </div>
 
@@ -133,7 +135,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 key={p.id}
                 onClick={() => setMenuFilter(p.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 min-h-[36px] rounded-xl text-xs font-medium whitespace-nowrap transition-colors active:scale-95 ${
                   menuFilter === p.id
                     ? 'bg-orange-600 text-white font-semibold'
                     : 'bg-slate-800/80 hover:bg-slate-800 text-slate-400'
@@ -159,14 +161,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 key={conv.id}
                 onClick={() => setSelectedConvId(conv.id)}
-                className={`w-full p-3.5 text-right flex items-start gap-3 transition-colors ${
+                className={`w-full p-3.5 text-right flex items-start gap-3 transition-colors active:bg-slate-800/80 min-h-[64px] ${
                   isSelected
                     ? 'bg-orange-950/30 border-r-4 border-r-orange-500'
                     : 'hover:bg-slate-800/50'
                 }`}
               >
                 {/* Avatar */}
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 border border-slate-600 flex items-center justify-center text-slate-200 font-bold text-xs shrink-0 shadow-sm">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 border border-slate-600 flex items-center justify-center text-slate-200 font-bold text-xs shrink-0 shadow-sm">
                   {conv.customerName ? conv.customerName.slice(0, 2) : 'לק'}
                 </div>
 
@@ -208,22 +210,29 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
       {/* Right Chat Details Pane */}
       {activeConv ? (
-        <div className="flex-1 flex flex-col h-full bg-[#0b141a]">
+        <div className={`${selectedConvId ? 'flex' : 'hidden md:flex'} flex-1 flex-col h-full bg-[#0b141a] pb-16 md:pb-0`}>
           
           {/* Conversation Top Bar */}
-          <div className="px-5 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-950 border border-emerald-600 text-emerald-300 font-bold flex items-center justify-center text-sm">
+          <div className="px-3 md:px-5 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => setSelectedConvId('')}
+                className="md:hidden p-2 -mr-1.5 text-slate-400 hover:text-white rounded-xl active:scale-95"
+                title="חזור לרשימת שיחות"
+              >
+                <ArrowRight className="w-5 h-5 stroke-[2.4]" />
+              </button>
+              <div className="w-10 h-10 rounded-full bg-emerald-950 border border-emerald-600 text-emerald-300 font-bold flex items-center justify-center text-sm shrink-0">
                 <User className="w-5 h-5" />
               </div>
               <div>
                 <div className="font-bold text-slate-100 text-sm flex items-center gap-2">
-                  <span>{activeConv.customerName}</span>
+                  <span className="truncate max-w-[130px] sm:max-w-none">{activeConv.customerName}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getMenuBadge(activeConv.selectedMenuId).color}`}>
                     {getMenuBadge(activeConv.selectedMenuId).label}
                   </span>
                 </div>
-                <div className="text-xs text-slate-400 font-mono dir-ltr flex items-center gap-2">
+                <div className="text-xs text-slate-400 font-mono dir-ltr flex items-center gap-1.5">
                   <Phone className="w-3 h-3 text-emerald-400" />
                   <span>{activeConv.from}</span>
                 </div>
@@ -231,13 +240,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </div>
 
             {/* Quick Action: Create Task with prefilled data */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsTaskModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-600/20 transition-all hover:scale-[1.02]"
+                className="flex items-center gap-1 px-3 py-2 min-h-[44px] bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-600/20 active:scale-95 transition-all"
               >
-                <CheckSquare className="w-4 h-4" />
-                <span>+ הוסף משימה ללקוח</span>
+                <CheckSquare className="w-4 h-4 stroke-[2.2]" />
+                <span className="hidden sm:inline">+ הוסף משימה ללקוח</span>
+                <span className="sm:hidden">+ משימה</span>
               </button>
             </div>
           </div>
@@ -325,21 +335,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
 
           {/* Bottom Manual Reply Box */}
-          <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+          <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2 safe-bottom">
             <input
               type="text"
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
-              placeholder="כתוב מענה ידני ללקוח בשם ח. סבן חומרי בניין..."
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              placeholder="כתוב מענה ידני ללקוח..."
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-base md:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-orange-500 min-h-[44px]"
             />
             <button
               type="submit"
               disabled={!replyText.trim() || isSending}
-              className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 transition-colors shadow-md shadow-orange-600/20 text-xs"
+              className="px-4 py-2.5 min-h-[44px] rounded-xl bg-orange-600 hover:bg-orange-500 active:scale-95 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-orange-600/20 text-xs"
             >
-              <Send className="w-4 h-4" />
-              <span>{isSending ? 'שולח...' : 'שלח מענה'}</span>
+              <Send className="w-4 h-4 stroke-[2.2]" />
+              <span className="hidden sm:inline">{isSending ? 'שולח...' : 'שלח מענה'}</span>
             </button>
           </form>
 
