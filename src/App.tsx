@@ -6,6 +6,8 @@ import { PWAInstallBanner } from './components/Navigation/PWAInstallBanner';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { StudioCanvas } from './components/Studio/StudioCanvas';
 import { ChatView } from './components/Chat/ChatView';
+import { WhatsAppChat } from './components/WhatsAppChat';
+import { VisualBranchBuilder } from './components/Builder/VisualBranchBuilder';
 import { LogsView } from './components/Logs/LogsView';
 import { DashboardView } from './components/Dashboard/DashboardView';
 import { SettingsView } from './components/Settings/SettingsView';
@@ -27,7 +29,8 @@ import {
 } from './types/studio';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'chat' | 'logs' | 'dashboard' | 'settings'>('studio');
+  const [activeTab, setActiveTab] = useState<'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings'>('builder');
+  const [chatViewMode, setChatViewMode] = useState<'whatsapp' | 'crm'>('whatsapp');
   const [flow, setFlow] = useState<FlowTree>(DEFAULT_FLOW);
   const [settings, setSettings] = useState<StudioSettings>(DEFAULT_SETTINGS);
   const [logs, setLogs] = useState<LogEntry[]>(INITIAL_LOGS);
@@ -174,6 +177,10 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="flex-1 h-full overflow-hidden flex flex-col relative">
+        {activeTab === 'builder' && (
+          <VisualBranchBuilder />
+        )}
+
         {activeTab === 'studio' && (
           <StudioCanvas
             flow={flow}
@@ -184,12 +191,57 @@ export default function App() {
         )}
 
         {activeTab === 'chat' && (
-          <ChatView
-            conversations={conversations}
-            onRefresh={refreshData}
-            onSendReply={handleSendReply}
-            onCreateTask={handleCreateTask}
-          />
+          <div className="flex-1 h-full flex flex-col overflow-hidden">
+            {/* View Switcher Bar */}
+            <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-xs shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setChatViewMode('whatsapp')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+                    chatViewMode === 'whatsapp'
+                      ? 'bg-[#25D366] text-slate-950 shadow-md shadow-[#25D366]/20'
+                      : 'bg-slate-800 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>💬 ממשק וואטסאפ מקורי</span>
+                  <span className="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full">#E5DDD5</span>
+                </button>
+
+                <button
+                  onClick={() => setChatViewMode('crm')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+                    chatViewMode === 'crm'
+                      ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
+                      : 'bg-slate-800 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>📋 ניהול שיחות ולקוחות (CRM)</span>
+                  {conversations.length > 0 && (
+                    <span className="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full">{conversations.length}</span>
+                  )}
+                </button>
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2 text-slate-400 text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>מחובר ל-Meta Cloud API & JONI Bridge</span>
+              </div>
+            </div>
+
+            {/* Content View */}
+            <div className="flex-1 overflow-hidden">
+              {chatViewMode === 'whatsapp' ? (
+                <WhatsAppChat initialRecipient={settings.businessNumber} />
+              ) : (
+                <ChatView
+                  conversations={conversations}
+                  onRefresh={refreshData}
+                  onSendReply={handleSendReply}
+                  onCreateTask={handleCreateTask}
+                />
+              )}
+            </div>
+          </div>
         )}
 
         {activeTab === 'logs' && (

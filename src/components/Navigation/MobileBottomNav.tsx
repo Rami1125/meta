@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
-  activeTab: 'studio' | 'chat' | 'logs' | 'dashboard' | 'settings';
-  setActiveTab: (tab: 'studio' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
+  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings';
+  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
   pendingTasksCount: number;
 }
 
@@ -21,25 +21,25 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const navItems = [
     {
-      id: 'studio' as const,
-      label: 'סטודיו',
+      id: 'builder' as const,
+      label: 'ענפים',
       icon: GitFork,
     },
     {
       id: 'chat' as const,
-      label: 'צ\'אט',
+      label: 'וואטסאפ',
       icon: MessageSquare,
       badge: pendingTasksCount > 0 ? pendingTasksCount : undefined,
+    },
+    {
+      id: 'studio' as const,
+      label: 'סטודיו',
+      icon: Smartphone,
     },
     {
       id: 'logs' as const,
       label: 'לוגים',
       icon: FileText,
-    },
-    {
-      id: 'dashboard' as const,
-      label: 'דשבורד',
-      icon: BarChart3,
     },
     {
       id: 'settings' as const,

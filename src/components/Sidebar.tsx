@@ -12,8 +12,8 @@ import {
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'studio' | 'chat' | 'logs' | 'dashboard' | 'settings';
-  setActiveTab: (tab: 'studio' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
+  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings';
+  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
   openSimulator: () => void;
   pendingTasksCount: number;
   unreadCount?: number;
@@ -27,15 +27,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems = [
     {
+      id: 'builder' as const,
+      label: 'בונה ענפים ויזואלי',
+      sublabel: 'WhatsApp Flow Builder',
+      icon: GitFork,
+      badge: 'חדש ✨',
+      badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+    },
+    {
       id: 'studio' as const,
       label: 'עורך עץ תפריטים',
       sublabel: 'Flow Studio',
-      icon: GitFork,
+      icon: Building2,
     },
     {
       id: 'chat' as const,
-      label: 'צ\'אט ושיחות',
-      sublabel: 'Live Chat',
+      label: 'צ\'אט וואטסאפ חי',
+      sublabel: 'WhatsApp & AI',
       icon: MessageSquare,
       badge: pendingTasksCount > 0 ? `${pendingTasksCount} משימות` : undefined,
       badgeColor: 'bg-amber-500/20 text-amber-400 border border-amber-500/30'

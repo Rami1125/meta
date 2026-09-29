@@ -650,10 +650,93 @@ app.post('/api/meta/send-live-menu', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Webhook Bridge for JONI
+// 3. Webhook Bridge for JONI & Free Chat AI
 // Safe handler: parses Hebrew + emojis, validates JSON, writes to Firebase ROOT/joni/incoming.json and /joni/last.json
 const FB_ROOT = "https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app";
 const FB_PATH = "joni/incoming";
+
+const SABAN_AI_SYSTEM_PROMPT = `אתה נציג שירות של ח. סבן חומרי בניין בע"מ - כפר ברא.
+אתה מדבר בעברית מלאה, ידידותי, קצר, עם אימוג'ים 🏗️🚚.
+מטרה: להבין מה הלקוח צריך (ברזל, בלוקים, מלט, חול, מכולה) ולתאם הובלה/איסוף.
+אם לקוח אומר 'בדיקה' - תענה 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?'
+אל תמציא מחירים. תשאל כמות, כתובת, תאריך.`;
+
+async function generateSabanAiChatReply(text: string, history: any[] = [], from?: string): Promise<{ reply: string; suggested_branches: string[]; intent: string }> {
+  const cleanText = String(text || '').trim();
+
+  if (cleanText.includes('בדיקה') || cleanText === 'test') {
+    return {
+      reply: "הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין היום?",
+      suggested_branches: ["🚚 הזמנה והובלה", "🏪 איסוף עצמי", "🗑️ מכולות פסולת"],
+      intent: "test_check"
+    };
+  }
+
+  let reply = "שלום! כאן נציג ח. סבן חומרי בניין כפר ברא 🏗️. איזה חומר אתה צריך (ברזל, בלוקים, מלט, חול) והאם מדובר בהובלה לאתר או באיסוף עצמי מהמחסן?";
+  let intent = "general_inquiry";
+  let suggested_branches = ["🚚 הזמנה והובלה", "🏪 איסוף עצמי", "🗑️ מכולות פסולת", "📍 מעקב הזמנה"];
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI();
+      const prompt = `
+System Prompt:
+${SABAN_AI_SYSTEM_PROMPT}
+
+לקוח (${from || 'וואטסאפ'}): ${cleanText}
+
+כתוב מענה שירותי קצר בעברית (1-2 משפטים) עם אימוג'ים מתאימים:
+`;
+      const res = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt
+      });
+      if (res.text) {
+        reply = res.text.trim();
+      }
+    } catch (err) {
+      console.error('Error generating Saban AI chat reply:', err);
+    }
+  }
+
+  const lower = cleanText.toLowerCase();
+  if (lower.includes('הובלה') || lower.includes('משלוח') || lower.includes('ברזל') || lower.includes('בלוק') || lower.includes('מלט')) {
+    intent = 'order_delivery';
+    suggested_branches = ['ברזל ורשתות', 'בלוקים שחורים/איטונג', 'מלט נשר', 'חול וחצץ'];
+  } else if (lower.includes('איסוף') || lower.includes('מחסן') || lower.includes('כפר ברא')) {
+    intent = 'self_pickup';
+    suggested_branches = ['שעות פתיחה מחסן', 'מיקום Waze', 'הכן הזמנה'];
+  } else if (lower.includes('מכולה') || lower.includes('פסולת') || lower.includes('פינוי')) {
+    intent = 'waste_container';
+    suggested_branches = ['מכולה 6 קוב', 'מכולה 8 קוב', 'מכולה 12 קוב'];
+  } else if (lower.includes('איפה') || lower.includes('מעקב') || lower.includes('נהג')) {
+    intent = 'track_order';
+    suggested_branches = ['צפי הגעה נהג', 'מיקום משאית', 'רמי: 050-886-0896'];
+  }
+
+  return { reply, suggested_branches, intent };
+}
+
+// In-Memory Visual Chat Flow (syncs with Firebase /chat_flows/main)
+let visualChatFlow: any = {
+  id: 'main',
+  name: 'עץ שיחות ראשי סבן',
+  updatedAt: new Date().toISOString(),
+  nodes: [
+    { id: 'start_1', type: 'menu', title: 'תפריט ראשי', text: 'ברוכים הבאים לח. סבן חומרי בניין כפר ברא 🏗️', options: ['🚚 הזמנה והובלה', '🏪 איסוף עצמי', '🗑️ מכולות פסולת', '📍 מעקב משלוח'], position: { x: 100, y: 150 } },
+    { id: 'branch_delivery', type: 'message', title: 'הזמנה והובלה', text: '🚚 מעולה! איזה חומר צריך? ברזל, בלוקים, מלט או חול?', position: { x: 450, y: 50 } },
+    { id: 'branch_pickup', type: 'message', title: 'איסוף עצמי', text: '🏪 איסוף עצמי מהמחסן בכפר ברא. מה להכין לך מראש?', position: { x: 450, y: 180 } },
+    { id: 'branch_waste', type: 'message', title: 'מכולות פסולת', text: '🗑️ איזה גודל מכולה תרצה? 6 קוב / 8 קוב / 12 קוב?', position: { x: 450, y: 310 } },
+    { id: 'branch_ai', type: 'ai', title: 'AI חופשי', text: '🤖 תן ל-AI של סבן לענות חופשי על כל שאלה', position: { x: 450, y: 440 } }
+  ],
+  connections: [
+    { from: 'start_1', fromOption: 0, to: 'branch_delivery' },
+    { from: 'start_1', fromOption: 1, to: 'branch_pickup' },
+    { from: 'start_1', fromOption: 2, to: 'branch_waste' },
+    { from: 'start_1', fromOption: 3, to: 'branch_ai' }
+  ]
+};
 
 const handleJoniWebhook = async (req: Request, res: Response) => {
   try {
@@ -714,73 +797,193 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       console.error("Firebase write error:", fbErr);
     }
 
-    // 6. Check interactive selection or menu reply
+    // 6. Check interactive selection or branch keyword
     const listId = data.listReplyId || data.rowId || data.interactive?.list_reply?.id;
     const buttonId = data.buttonReplyId || data.interactive?.button_reply?.id;
     const selectedId = listId || buttonId;
 
-    if (selectedId) {
-      console.log("MENU SELECTED:", selectedId);
+    let replyText = '';
+    let flowTitle = 'מענה AI סבן';
+    let chosenBranchId = selectedId || '';
 
-      const flows: Record<string, { text: string; next: string; title: string }> = {
-        order_delivery: {
-          text: "🚚 מעולה! איזה חומר צריך?\n1️⃣ ברזל\n2️⃣ בלוקים\n3️⃣ מלט\n4️⃣ חול/חצץ",
-          next: "await_material",
-          title: "🚚 הזמנה והובלה"
-        },
-        self_pickup: {
-          text: "🏪 איסוף עצמי מהמחסן בכפר ברא.\nשלח מיקום או כתוב מה להכין לך?",
-          next: "await_pickup_details",
-          title: "🏪 איסוף עצמי"
-        },
-        waste_container: {
-          text: "🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב",
-          next: "await_container_size",
-          title: "🗑️ מכולות פסולת"
-        },
-        track_order: {
-          text: "📍 שלח מספר הזמנה ואבדוק לך מיד",
-          next: "await_tracking",
-          title: "📍 מעקב משלוח"
-        }
-      };
-
-      const normalizedId = selectedId === 'delivery' ? 'order_delivery'
-        : selectedId === 'pickup' ? 'self_pickup'
-        : selectedId === 'containers' ? 'waste_container'
-        : selectedId === 'tracking' ? 'track_order'
-        : selectedId;
-
-      if (flows[normalizedId]) {
-        const flow = flows[normalizedId];
-        const sendResult = await sendWhatsAppText(cleanPayload.from, flow.text);
-        await updateSession(cleanPayload.from, { step: flow.next, lastChoice: normalizedId });
-
-        logs.unshift({
-          id: `log_joni_sel_${Date.now()}`,
-          from: `+${cleanPayload.from}`,
-          customer_name: cleanPayload.name,
-          incoming_text: `[בחירת תפריט: ${flow.title}]`,
-          selected_menu_id: normalizedId,
-          selected_menu_title: flow.title,
-          sent_response: flow.text,
-          response_type: 'text',
-          meta_message_id: sendResult.messageId,
-          timestamp: new Date().toISOString(),
-          channel: 'joni',
-          status: 'sent'
-        });
+    const flows: Record<string, { text: string; next: string; title: string }> = {
+      order_delivery: {
+        text: "🚚 מעולה! איזה חומר צריך?\n1️⃣ ברזל\n2️⃣ בלוקים\n3️⃣ מלט\n4️⃣ חול/חצץ",
+        next: "await_material",
+        title: "🚚 הזמנה והובלה"
+      },
+      self_pickup: {
+        text: "🏪 איסוף עצמי מהמחסן בכפר ברא.\nשלח מיקום או כתוב מה להכין לך?",
+        next: "await_pickup_details",
+        title: "🏪 איסוף עצמי"
+      },
+      waste_container: {
+        text: "🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב",
+        next: "await_container_size",
+        title: "🗑️ מכולות פסולת"
+      },
+      track_order: {
+        text: "📍 שלח מספר הזמנה ואבדוק לך מיד",
+        next: "await_tracking",
+        title: "📍 מעקב משלוח"
       }
+    };
+
+    const normalizedId = selectedId === 'delivery' ? 'order_delivery'
+      : selectedId === 'pickup' ? 'self_pickup'
+      : selectedId === 'containers' ? 'waste_container'
+      : selectedId === 'tracking' ? 'track_order'
+      : selectedId;
+
+    if (normalizedId && flows[normalizedId]) {
+      console.log("MENU SELECTED:", normalizedId);
+      const flow = flows[normalizedId];
+      replyText = flow.text;
+      flowTitle = flow.title;
+      chosenBranchId = normalizedId;
+      await updateSession(cleanPayload.from, { step: flow.next, lastChoice: normalizedId });
     } else {
-      // Process standard text through Saban Studio flow
-      await processIncomingMessage({
-        from: `+${cleanPayload.from}`,
-        text: cleanPayload.text,
-        customerName: cleanPayload.name
-      }, 'joni');
+      // 7. Check if text matches branch keyword, otherwise call Free AI Chat engine!
+      const lower = cleanPayload.text.toLowerCase();
+      if (lower.includes('הובלה') || lower.includes('משלוח')) {
+        replyText = flows.order_delivery.text;
+        flowTitle = flows.order_delivery.title;
+        chosenBranchId = 'order_delivery';
+      } else if (lower.includes('איסוף') || lower.includes('מחסן')) {
+        replyText = flows.self_pickup.text;
+        flowTitle = flows.self_pickup.title;
+        chosenBranchId = 'self_pickup';
+      } else if (lower.includes('מכולה') || lower.includes('פסולת')) {
+        replyText = flows.waste_container.text;
+        flowTitle = flows.waste_container.title;
+        chosenBranchId = 'waste_container';
+      } else if (lower.includes('מעקב') || lower.includes('איפה')) {
+        replyText = flows.track_order.text;
+        flowTitle = flows.track_order.title;
+        chosenBranchId = 'track_order';
+      } else {
+        // Free AI Chat Engine Response
+        const aiResult = await generateSabanAiChatReply(cleanPayload.text, [], cleanPayload.from);
+        replyText = aiResult.reply;
+        flowTitle = 'מענה AI סבן חופשי';
+        chosenBranchId = aiResult.intent;
+      }
     }
 
-    return res.status(200).json({ success: true, received: cleanPayload, status: "ok", fixed: true, payload: cleanPayload, firebaseStatus: fbStatus });
+    // 8. Dispatch reply to customer via WhatsApp
+    const sendResult = await sendWhatsAppText(cleanPayload.from, replyText);
+
+    // 9. Save all to Firebase logs & conversations (Requirements 4 & 5)
+    try {
+      // Write to /logs/whatsapp/{cleanPhone}/{timestamp}.json
+      const logPayload = {
+        incoming: cleanPayload.text,
+        reply: replyText,
+        branch_id: chosenBranchId,
+        ai_used: true,
+        action: "auto_reply_sent",
+        timestamp: cleanPayload.timestamp
+      };
+      await fetch(`${FB_ROOT}/logs/whatsapp/${cleanPayload.from}/${cleanPayload.timestamp}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(logPayload)
+      }).catch(() => {});
+
+      await fetch(`${FB_ROOT}/joni/logs/${cleanPayload.from}/${cleanPayload.timestamp}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(logPayload)
+      }).catch(() => {});
+
+      // Write to /conversations/{cleanPhone}.json
+      const convPayload = {
+        lastMessage: replyText,
+        flowPosition: chosenBranchId,
+        name: cleanPayload.name,
+        updatedAt: new Date().toISOString()
+      };
+      await fetch(`${FB_ROOT}/conversations/${cleanPayload.from}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(convPayload)
+      }).catch(() => {});
+
+      await fetch(`${FB_ROOT}/joni/conversations/${cleanPayload.from}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(convPayload)
+      }).catch(() => {});
+    } catch (fbSaveErr) {
+      console.error('Error saving to Firebase logs/conversations:', fbSaveErr);
+    }
+
+    // 10. Update local studio logs
+    logs.unshift({
+      id: `log_${Date.now()}`,
+      from: `+${cleanPayload.from}`,
+      customer_name: cleanPayload.name,
+      incoming_text: cleanPayload.text || `[בחירת תפריט: ${flowTitle}]`,
+      selected_menu_id: chosenBranchId,
+      selected_menu_title: flowTitle,
+      sent_response: replyText,
+      response_type: 'text',
+      meta_message_id: sendResult.messageId,
+      timestamp: new Date().toISOString(),
+      channel: 'joni',
+      status: 'sent'
+    });
+
+    // 11. Update local conversations
+    let conv = conversations.find(c => c.from.replace(/[^0-9]/g, '') === cleanPayload.from);
+    if (!conv) {
+      conv = {
+        id: `conv_${Date.now()}`,
+        from: `+${cleanPayload.from}`,
+        customerName: cleanPayload.name,
+        lastMessage: replyText,
+        lastTimestamp: new Date().toISOString(),
+        selectedMenuId: chosenBranchId,
+        selectedMenuTitle: flowTitle,
+        status: 'active',
+        messages: []
+      };
+      conversations.unshift(conv);
+    } else {
+      conv.lastMessage = replyText;
+      conv.lastTimestamp = new Date().toISOString();
+      conv.selectedMenuId = chosenBranchId;
+      conv.selectedMenuTitle = flowTitle;
+    }
+
+    if (cleanPayload.text) {
+      conv.messages.push({
+        id: `msg_in_${Date.now()}`,
+        direction: 'incoming',
+        text: cleanPayload.text,
+        type: 'text',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    conv.messages.push({
+      id: `msg_out_${Date.now() + 1}`,
+      direction: 'outgoing',
+      text: replyText,
+      type: 'text',
+      timestamp: new Date().toISOString()
+    });
+
+    return res.status(200).json({
+      success: true,
+      received: cleanPayload,
+      reply: replyText,
+      branch_id: chosenBranchId,
+      status: "ok",
+      fixed: true,
+      payload: cleanPayload,
+      firebaseStatus: fbStatus
+    });
 
   } catch (error: any) {
     console.error("JONI FIX ERROR:", error);
@@ -795,6 +998,62 @@ app.get('/api/webhooks/joni', (_req: Request, res: Response) => {
 });
 app.get('/api/joni/incoming', (_req: Request, res: Response) => {
   res.json({ status: "joni webhook alive", joni: "alive", time: Date.now() });
+});
+
+// Free Chat AI API Route
+app.post('/api/chat/ai', async (req: Request, res: Response) => {
+  try {
+    const { from, text, history } = req.body || {};
+    const result = await generateSabanAiChatReply(text, history, from);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/chat/ai', (_req: Request, res: Response) => {
+  res.json({
+    status: "saban free chat ai alive",
+    model: "gemini-3.8-flash",
+    business: "ח. סבן חומרי בניין בע״מ - כפר ברא"
+  });
+});
+
+// Visual Chat Flow Storage Endpoints (Firebase /chat_flows/main sync)
+app.get('/api/chat_flows/main', async (_req: Request, res: Response) => {
+  try {
+    const fbRes = await fetch(`${FB_ROOT}/chat_flows/main.json`);
+    if (fbRes.ok) {
+      const data = await fbRes.json();
+      if (data && data.nodes) {
+        visualChatFlow = data;
+      }
+    }
+  } catch (e) {
+    // fallback to in-memory
+  }
+  res.json(visualChatFlow);
+});
+
+app.post('/api/chat_flows/main', async (req: Request, res: Response) => {
+  try {
+    const newFlow = req.body;
+    if (newFlow && newFlow.nodes) {
+      visualChatFlow = {
+        ...newFlow,
+        updatedAt: new Date().toISOString()
+      };
+
+      await fetch(`${FB_ROOT}/chat_flows/main.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(visualChatFlow)
+      });
+    }
+    res.json({ success: true, flow: visualChatFlow });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Session store for WhatsApp interactive conversations
