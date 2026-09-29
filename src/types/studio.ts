@@ -174,6 +174,8 @@ export interface StudioSettings {
   businessName: string;
   businessNumber: string;
   firebaseSendUrl: string;
+  firebaseRootUrl?: string;
+  firebasePath?: string;
   waitTimeSeconds: number;
   metaPhoneNumberId: string;
   metaAccessToken: string;

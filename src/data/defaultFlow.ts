@@ -3,7 +3,9 @@ import { FlowTree, StudioSettings, StudioTask, Conversation, LogEntry } from '..
 export const DEFAULT_SETTINGS: StudioSettings = {
   businessName: 'רמי מסארוה / ח. סבן',
   businessNumber: '+972508860896',
-  firebaseSendUrl: 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app/joni/send.json',
+  firebaseSendUrl: 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app/joni/incoming.json',
+  firebaseRootUrl: 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app',
+  firebasePath: 'joni/incoming',
   waitTimeSeconds: 2,
   metaPhoneNumberId: '646128321917738',
   metaAccessToken: '',

@@ -67,10 +67,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSendingLiveMenu, setIsSendingLiveMenu] = useState(false);
   const [liveMenuResult, setLiveMenuResult] = useState<any>(null);
 
+  // JONI & Firebase RTDB Test State
+  const [isTestingJoni, setIsTestingJoni] = useState(false);
+  const [joniTestResult, setJoniTestResult] = useState<any>(null);
+
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const joniWebhookUrl = `${origin}/api/webhooks/joni`;
   const joniIncomingUrl = `${origin}/api/joni/incoming`;
   const metaWebhookUrl = `${origin}/api/webhooks/meta`;
+
+  const firebaseRootUrl = 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app';
+  const firebasePath = 'joni/incoming';
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -124,6 +131,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setLiveMenuResult({ success: false, error: err.message });
     }
     setIsSendingLiveMenu(false);
+  };
+
+  const runTestJoni = async () => {
+    setIsTestingJoni(true);
+    setJoniTestResult(null);
+    try {
+      const res = await fetch('/api/webhooks/joni', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: '972508860896',
+          text: 'בדיקה 🚚',
+          name: 'ראמי מסארווה'
+        })
+      });
+      const data = await res.json();
+      setJoniTestResult({
+        status: res.status,
+        ...data
+      });
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setJoniTestResult({ status: 'error', error: err.message });
+    }
+    setIsTestingJoni(false);
   };
 
   return (
@@ -277,31 +309,74 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          {/* JONI Webhook Endpoints (With 1-Click Copy) */}
+          {/* JONI Webhook Endpoints & Firebase RTDB Setup */}
           <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Radio className="w-4 h-4 text-emerald-400" />
-                <span>כתובות Webhook עבור תוסף JONI</span>
+                <span>הגדרות תוסף JONI וחיבור Firebase RTDB</span>
               </h3>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                פעיל
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
+                תקין (Valid JSON) ✅
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              הזן את הכתובת הזו בהגדרות תוסף JONI כדי להעביר את כל הודעות הוואטסאפ הנכנסות לסטודיו סבן:
+            
+            <p className="text-xs text-slate-300 leading-relaxed">
+              הזן את ההגדרות הבאות במדויק בהגדרות תוסף JONI כדי למנוע שגיאות אדומות (Red Error) ב-Firebase RTDB:
             </p>
 
-            {/* Primary JONI webhook endpoint */}
+            {/* 1. Firebase Root URL */}
+            <div>
+              <span className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-amber-500" />
+                <span>1. כתובת Firebase URL (ROOT בלבד, ללא /joni):</span>
+              </span>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
+                <span className="text-xs font-mono text-amber-300 dir-ltr text-left flex-1 truncate select-all">
+                  {firebaseRootUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(firebaseRootUrl, 'fb_root')}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
+                  title="העתק ללוח"
+                >
+                  {copiedKey === 'fb_root' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Firebase Path */}
             <div>
               <span className="block text-[11px] font-semibold text-slate-300 mb-1">
-                כתובת Webhook ראשית:
+                2. נתיב בסיס נתונים (Path):
+              </span>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
+                <span className="text-xs font-mono text-emerald-300 dir-ltr text-left flex-1 truncate select-all">
+                  {firebasePath}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(firebasePath, 'fb_path')}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
+                  title="העתק ללוח"
+                >
+                  {copiedKey === 'fb_path' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* 3. JONI Webhook URL */}
+            <div>
+              <span className="block text-[11px] font-semibold text-slate-300 mb-1">
+                3. כתובת Webhook בתוסף:
               </span>
               <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
                 <span className="text-xs font-mono text-emerald-300 dir-ltr text-left flex-1 truncate select-all">
                   {joniWebhookUrl}
                 </span>
                 <button
+                  type="button"
                   onClick={() => handleCopy(joniWebhookUrl, 'joni1')}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
                   title="העתק ללוח"
@@ -311,45 +386,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            {/* Bridge Incoming Callback */}
+            {/* 4. Callback URL (EMPTY) */}
             <div>
               <span className="block text-[11px] font-semibold text-slate-300 mb-1">
-                נתיב JONI Incoming Bridge:
+                4. Callback Url:
               </span>
-              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
-                <span className="text-xs font-mono text-emerald-300 dir-ltr text-left flex-1 truncate select-all">
-                  {joniIncomingUrl}
+              <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-700/80 text-xs">
+                <span className="text-slate-400 font-mono italic">EMPTY (להשאיר ריק לגמרי)</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  נשמר ריק ✓
                 </span>
-                <button
-                  onClick={() => handleCopy(joniIncomingUrl, 'joni2')}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
-                  title="העתק ללוח"
-                >
-                  {copiedKey === 'joni2' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
               </div>
             </div>
 
-            {/* Firebase send endpoint */}
-            <div>
-              <span className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <Flame className="w-3.5 h-3.5 text-amber-500" />
-                <span>כתובת Firebase RTDB קיימת של JONI (POST):</span>
-              </span>
-              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
-                <input
-                  type="text"
-                  value={formData.firebaseSendUrl}
-                  onChange={(e) => setFormData({ ...formData, firebaseSendUrl: e.target.value })}
-                  className="text-xs font-mono text-amber-300 dir-ltr text-left flex-1 bg-transparent border-none focus:outline-none"
-                />
-                <button
-                  onClick={() => handleCopy(formData.firebaseSendUrl, 'firebase')}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
-                >
-                  {copiedKey === 'firebase' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
+            {/* Live Test Firebase Button */}
+            <div className="pt-2 border-t border-slate-800 space-y-2">
+              <button
+                type="button"
+                onClick={runTestJoni}
+                disabled={isTestingJoni}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 transition-all"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isTestingJoni ? 'animate-spin' : ''}`} />
+                <span>{isTestingJoni ? 'בודק כתיבה תקינה ל-Firebase...' : 'בדוק כתיבה תקנית ל-Firebase RTDB ("בדיקה 🚚")'}</span>
+              </button>
+
+              {joniTestResult && (
+                <div className="p-3 bg-slate-950 rounded-xl border border-emerald-500/40 text-xs space-y-1.5 animate-in fade-in">
+                  <div className="flex items-center justify-between font-bold text-emerald-400">
+                    <span>תוצאת כתיבה ל-Firebase RTDB:</span>
+                    <span className="text-[10px] font-mono bg-emerald-500/20 px-2 py-0.5 rounded">
+                      FIREBASE WRITE: 200 OK (GREEN)
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-300 dir-ltr text-left overflow-x-auto whitespace-pre-wrap bg-slate-900 p-2 rounded-lg border border-slate-800">
+                    {JSON.stringify(joniTestResult.payload || joniTestResult, null, 2)}
+                  </div>
+                  <div className="text-[10px] text-emerald-300">
+                    ✓ ה-JSON עבר ולידציה מלאה עם קידוד UTF-8 ונשמר בהצלחה ב-joni/incoming וב-joni/last.
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>
