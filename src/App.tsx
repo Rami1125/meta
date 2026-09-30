@@ -11,6 +11,7 @@ import { VisualBranchBuilder } from './components/Builder/VisualBranchBuilder';
 import { LogsView } from './components/Logs/LogsView';
 import { DashboardView } from './components/Dashboard/DashboardView';
 import { SettingsView } from './components/Settings/SettingsView';
+import { ToolsView } from './components/Tools/ToolsView';
 import { WhatsAppSimulator } from './components/Simulator/WhatsAppSimulator';
 import { api } from './services/api';
 import { 
@@ -29,7 +30,7 @@ import {
 } from './types/studio';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings'>('builder');
+  const [activeTab, setActiveTab] = useState<'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings' | 'tools'>('builder');
   const [chatViewMode, setChatViewMode] = useState<'whatsapp' | 'crm'>('whatsapp');
   const [flow, setFlow] = useState<FlowTree>(DEFAULT_FLOW);
   const [settings, setSettings] = useState<StudioSettings>(DEFAULT_SETTINGS);
@@ -264,6 +265,10 @@ export default function App() {
             onNavigate={setActiveTab}
             onOpenSimulator={() => setIsSimulatorOpen(true)}
           />
+        )}
+
+        {activeTab === 'tools' && (
+          <ToolsView />
         )}
 
         {activeTab === 'settings' && (

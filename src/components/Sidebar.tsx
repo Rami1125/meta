@@ -9,12 +9,13 @@ import {
   Radio, 
   Flame, 
   Building2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Zap
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings';
-  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
+  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings' | 'tools';
+  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings' | 'tools') => void;
   openSimulator: () => void;
   pendingTasksCount: number;
   unreadCount?: number;
@@ -34,6 +35,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: GitFork,
       badge: 'חדש ✨',
       badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+    },
+    {
+      id: 'tools' as const,
+      label: 'כלים ו-Function Calling',
+      sublabel: 'JONI Make Webhook',
+      icon: Zap,
+      badge: 'Live ⚡',
+      badgeColor: 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
     },
     {
       id: 'studio' as const,

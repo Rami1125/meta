@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 import { 
   DEFAULT_FLOW, 
   DEFAULT_SETTINGS, 
@@ -38,6 +38,113 @@ const GRAPH_VERSION = process.env.GRAPH_VERSION || 'v20.0';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'רמי מסארוה / ח. סבן';
 const DISPLAY_PHONE = process.env.DISPLAY_PHONE || '+972508860896';
 const GOOGLE_SHEET_WEBAPP_URL = process.env.GOOGLE_SHEET_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+const MAKE_JONI_WEBHOOK_URL = process.env.MAKE_JONI_WEBHOOK_URL || 'https://hook.eu1.make.com/iozzim8loo8gtkq62wb4axycdskfe080';
+
+// Log of recent dispatches sent to Make
+export interface JoniMakeDispatchResult {
+  id: string;
+  timestamp: string;
+  to: string;
+  message: string;
+  action: string;
+  sender: string;
+  status: number;
+  success: boolean;
+  response: string;
+}
+const joniMakeLogs: JoniMakeDispatchResult[] = [];
+
+// Tool Definition for Gemini Function Calling (trigger_joni_make)
+const triggerJoniMakeFunctionDeclaration: FunctionDeclaration = {
+  name: 'trigger_joni_make',
+  description: 'שולח את התפריט או התשובה של נועה ישירות ל-Make (JONI Webhook) לשידור מיידי בוואטסאפ ללקוח.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      to: {
+        type: Type.STRING,
+        description: 'מספר הטלפון של הנמען (לדוגמה 972508860896).'
+      },
+      message: {
+        type: Type.STRING,
+        description: 'תוכן ההודעה או התפריט שנועה שיגרה.'
+      },
+      action: {
+        type: Type.STRING,
+        description: 'סוג הפעולה (send_menu / customer_reply / order_update / container_task).'
+      }
+    },
+    required: ['to', 'message']
+  }
+};
+
+// Tool Executor: Dispatches directly to Make Webhook
+async function triggerJoniMake(to: string, message: string, action: string = 'customer_reply') {
+  let cleanTo = String(to || '').replace(/[^0-9]/g, '');
+  if (cleanTo.startsWith('05')) {
+    cleanTo = '972' + cleanTo.slice(1);
+  }
+  if (!cleanTo) {
+    cleanTo = '972508860896';
+  }
+
+  const payload = {
+    to: cleanTo,
+    message: String(message || '').trim(),
+    action: action || 'customer_reply',
+    sender: 'נועה AI (ח. סבן)'
+  };
+
+  try {
+    const res = await fetch(MAKE_JONI_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const resText = await res.text();
+    console.log(`[trigger_joni_make] Dispatched to Make (${cleanTo}, action: ${payload.action}), status: ${res.status}, response:`, resText);
+
+    const logEntry: JoniMakeDispatchResult = {
+      id: `make_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      to: cleanTo,
+      message: payload.message,
+      action: payload.action,
+      sender: payload.sender,
+      status: res.status,
+      success: res.ok,
+      response: resText || 'Accepted'
+    };
+    joniMakeLogs.unshift(logEntry);
+    if (joniMakeLogs.length > 80) joniMakeLogs.pop();
+
+    return {
+      success: res.ok,
+      status: res.status,
+      response: resText,
+      payload
+    };
+  } catch (err: any) {
+    console.error('[trigger_joni_make] Dispatch error:', err);
+    const logEntry: JoniMakeDispatchResult = {
+      id: `make_${Date.now()}_err`,
+      timestamp: new Date().toISOString(),
+      to: cleanTo,
+      message: payload.message,
+      action: payload.action,
+      sender: payload.sender,
+      status: 500,
+      success: false,
+      response: err.message
+    };
+    joniMakeLogs.unshift(logEntry);
+    return {
+      success: false,
+      error: err.message,
+      payload
+    };
+  }
+}
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -63,18 +170,25 @@ let logs: LogEntry[] = JSON.parse(JSON.stringify(INITIAL_LOGS));
 let conversations: Conversation[] = JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS));
 let tasks: StudioTask[] = JSON.parse(JSON.stringify(INITIAL_TASKS));
 
-// Helper: AI Response generator using Gemini 3.8 Flash
-async function generateAiReply(userPrompt: string, systemPrompt?: string, contextInfo?: string): Promise<string> {
+// Helper: AI Response generator using Gemini 3.8 Flash & Noa AI Make broadcast
+async function generateAiReply(userPrompt: string, systemPrompt?: string, contextInfo?: string, toPhone?: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
+  const targetRecipient = toPhone || DISPLAY_PHONE || '972508860896';
   if (!apiKey) {
-    return 'נציג סבן חומרי בניין קיבל את הודעתך ויחזור אליך בהקדם. לפרטים דחופים ניתן לחייג 050-8860896.';
+    const fallback = 'נציג סבן חומרי בניין קיבל את הודעתך ויחזור אליך בהקדם. לפרטים דחופים ניתן לחייג 050-8860896.';
+    await triggerJoniMake(targetRecipient, fallback, 'customer_reply');
+    return fallback;
   }
 
   try {
-    const ai = new GoogleGenAI();
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
     const prompt = `
 System Instructions:
-${systemPrompt || 'אתה נציג שירות וירטואלי של ח. סבן חומרי בניין בע״מ (טלפון 050-8860896). ספק מענה קצר, שירותי, אמין ומקצועי בעברית.'}
+${systemPrompt || 'אתה נועה AI, נציגה וירטואלית של ח. סבן חומרי בניין בע״מ (טלפון 050-8860896). המחוברת ישירות למנוע ההפצה של JONI Make.'}
+הפעל תמיד את הכלי trigger_joni_make כדי לשדר את התשובה ישירות ל-Make ולוואטסאפ.
 
 Context about H. Saban Building Materials:
 ${contextInfo || 'ח. סבן היא ספקית מובילה של חומרי בניין, בלוקים, מלט נשר, ברזל, חול, גבס ומכולות לפינוי פסולת. סניפים בהחרש 10 ובהתלמיד 6. שעות: א-ה 06:30-17:00, ו 06:30-13:00.'}
@@ -82,18 +196,40 @@ ${contextInfo || 'ח. סבן היא ספקית מובילה של חומרי בנ
 User Message from WhatsApp:
 "${userPrompt}"
 
-Write a concise WhatsApp reply in Hebrew (2-3 sentences max, with relevant emojis):
+Write a concise WhatsApp reply in Hebrew (2-3 sentences max, with relevant emojis) and call trigger_joni_make:
 `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: prompt,
+      config: {
+        tools: [{ functionDeclarations: [triggerJoniMakeFunctionDeclaration] }]
+      }
     });
 
-    return response.text?.trim() || 'תודה שפנית לח. סבן חומרי בניין. פנייתך הועברה לצוות המכירות.';
+    let reply = response.text?.trim() || 'תודה שפנית לח. סבן חומרי בניין. פנייתך הועברה לצוות המכירות.';
+
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      for (const call of response.functionCalls) {
+        if (call.name === 'trigger_joni_make') {
+          const args = call.args as any;
+          const to = args?.to || targetRecipient;
+          const msg = args?.message || reply;
+          const act = args?.action || 'customer_reply';
+          await triggerJoniMake(to, msg, act);
+          reply = msg;
+        }
+      }
+    } else {
+      await triggerJoniMake(targetRecipient, reply, 'customer_reply');
+    }
+
+    return reply;
   } catch (err) {
     console.error('Gemini AI generation error:', err);
-    return 'תודה שפנית לח. סבן. פנייתך נקלטה ונציג שירות יצור קשר בהקדם.';
+    const fallback = 'תודה שפנית לח. סבן. פנייתך נקלטה ונציג שירות יצור קשר בהקדם.';
+    await triggerJoniMake(targetRecipient, fallback, 'customer_reply');
+    return fallback;
   }
 }
 
@@ -815,20 +951,25 @@ const SABAN_AI_SYSTEM_PROMPT = `אתה נציג שירות של ח. סבן חו�
 2. כתובת מדויקת לאספקה (עיר, רחוב ומספר)
 3. תאריך מבוקש להובלה`;
 
-async function generateSabanAiChatReply(text: string, history: any[] = [], from?: string): Promise<{ reply: string; suggested_branches: string[]; intent: string }> {
+async function generateSabanAiChatReply(text: string, history: any[] = [], from?: string): Promise<{ reply: string; suggested_branches: string[]; intent: string; make_dispatched?: boolean }> {
   const cleanText = String(text || '').trim();
+  const recipientPhone = from || DISPLAY_PHONE || '972508860896';
 
   if (cleanText.includes('בדיקה') || cleanText === 'test') {
+    const testReply = "הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין היום?";
+    await triggerJoniMake(recipientPhone, testReply, 'customer_reply');
     return {
-      reply: "הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין היום?",
+      reply: testReply,
       suggested_branches: ["🚚 הזמנה והובלה", "🏪 איסוף עצמי", "🗑️ מכולות פסולת"],
-      intent: "test_check"
+      intent: "test_check",
+      make_dispatched: true
     };
   }
 
   let reply = "שלום! נשמח לספק לך את כל חומרי הבניין הדרושים 🏗️🚚. כדי שנוכל לתאם הובלה מסודרת, אנא ציין: כמות וקוטר מבוקש, כתובת מדויקת למשלוח, ותאריך אספקה רצוי.";
   let intent = "general_inquiry";
   let suggested_branches = ["🚚 הזמנה והובלה", "🏪 איסוף עצמי", "🗑️ מכולות פסולת", "📍 מעקב הזמנה"];
+  let makeDispatched = false;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (apiKey) {
@@ -838,15 +979,34 @@ async function generateSabanAiChatReply(text: string, history: any[] = [], from?
 System Instructions:
 ${SABAN_AI_SYSTEM_PROMPT}
 
-לקוח (${from || 'וואטסאפ'}): ${cleanText}
+אתה נועה AI, המחוברת ישירות למנוע ההפצה של JONI Make.
+בכל פעם שאתה מייצר תפריט, מאשר הזמנה או מנסח תשובה ללקוח עבור וואטסאפ — אל תסתפק רק בהצגת הטקסט בצ'אט. עליך להפעיל את הכלי trigger_joni_make כדי לשדר את התוכן ישירות ל-Webhook של Make.
 
-השב בקצרה (1-2 משפטים) בעברית עם אימוג'ים מתאימים. אם הלקוח ציין חומר והובלה (כמו ברזל לכפר סבא), תאשר שנקלט ותשאל אותו על כמות, כתובת ותאריך:
+לקוח (${recipientPhone}): ${cleanText}
+
+השב בקצרה (1-2 משפטים) בעברית עם אימוג'ים מתאימים, והפעל את trigger_joni_make:
 `;
       const res = await ai.models.generateContent({
         model: 'gemini-3.8-flash',
-        contents: prompt
+        contents: prompt,
+        config: {
+          tools: [{ functionDeclarations: [triggerJoniMakeFunctionDeclaration] }]
+        }
       });
-      if (res.text) {
+
+      if (res.functionCalls && res.functionCalls.length > 0) {
+        for (const call of res.functionCalls) {
+          if (call.name === 'trigger_joni_make') {
+            const args = call.args as any;
+            const targetTo = args?.to || recipientPhone;
+            const targetMsg = args?.message || res.text || reply;
+            const targetAct = args?.action || 'customer_reply';
+            await triggerJoniMake(targetTo, targetMsg, targetAct);
+            reply = targetMsg;
+            makeDispatched = true;
+          }
+        }
+      } else if (res.text) {
         reply = res.text.trim();
       }
     } catch (err) {
@@ -869,7 +1029,18 @@ ${SABAN_AI_SYSTEM_PROMPT}
     suggested_branches = ['צפי הגעה נהג', 'מיקום משאית', 'רמי: 050-886-0896'];
   }
 
-  return { reply, suggested_branches, intent };
+  // Ensure closed-loop broadcast to Make if not called via tool
+  if (!makeDispatched) {
+    let actionType = 'customer_reply';
+    if (intent === 'order_delivery') actionType = 'order_update';
+    else if (intent === 'waste_container') actionType = 'container_task';
+    else if (cleanText.includes('תפריט') || cleanText.includes('שלום')) actionType = 'send_menu';
+
+    await triggerJoniMake(recipientPhone, reply, actionType);
+    makeDispatched = true;
+  }
+
+  return { reply, suggested_branches, intent, make_dispatched: makeDispatched };
 }
 
 // In-Memory Visual Chat Flow (syncs with Firebase /chat_flows/main)
@@ -1233,6 +1404,17 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
 
     // 8. Dispatch reply to customer via WhatsApp
     const sendResult = await sendWhatsAppText(cleanPayload.from, replyText);
+
+    // 8.1. Closed-loop broadcast to Make Webhook (trigger_joni_make)
+    let actionType = 'customer_reply';
+    if (chosenBranchId === 'welcome_menu' || chosenBranchId.includes('menu')) {
+      actionType = 'send_menu';
+    } else if (chosenBranchId.includes('order') || chosenBranchId.includes('delivery')) {
+      actionType = 'order_update';
+    } else if (chosenBranchId.includes('container') || chosenBranchId.includes('waste')) {
+      actionType = 'container_task';
+    }
+    await triggerJoniMake(cleanPayload.from, replyText, actionType);
 
     // 9. Save all to Firebase logs & conversations (Requirements 4 & 5)
     try {
@@ -2125,6 +2307,37 @@ app.post('/api/sheets/post', async (req: Request, res: Response) => {
     res.json(result);
   } else {
     res.status(500).json({ success: false, error: 'Failed to post to Google Sheets Web App' });
+  }
+});
+
+// 11. Studio Tools & Function Calling API (JONI Make Broadcast)
+app.get('/api/tools', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    tools: [
+      {
+        name: triggerJoniMakeFunctionDeclaration.name,
+        description: triggerJoniMakeFunctionDeclaration.description,
+        webhookUrl: MAKE_JONI_WEBHOOK_URL,
+        parameters: triggerJoniMakeFunctionDeclaration.parameters,
+        sender: 'נועה AI (ח. סבן)',
+        status: 'active'
+      }
+    ],
+    recentDispatches: joniMakeLogs
+  });
+});
+
+app.post('/api/tools/trigger-joni-make', async (req: Request, res: Response) => {
+  try {
+    const { to, message, action } = req.body || {};
+    if (!message) {
+      return res.status(400).json({ success: false, error: 'message is required' });
+    }
+    const result = await triggerJoniMake(to || '972508860896', message, action || 'send_menu');
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

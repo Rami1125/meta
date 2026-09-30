@@ -5,12 +5,13 @@ import {
   FileText, 
   BarChart3, 
   Settings, 
-  Smartphone 
+  Smartphone,
+  Zap 
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
-  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings';
-  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings') => void;
+  activeTab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings' | 'tools';
+  setActiveTab: (tab: 'studio' | 'builder' | 'chat' | 'logs' | 'dashboard' | 'settings' | 'tools') => void;
   pendingTasksCount: number;
 }
 
@@ -24,6 +25,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       id: 'builder' as const,
       label: 'ענפים',
       icon: GitFork,
+    },
+    {
+      id: 'tools' as const,
+      label: 'כלים',
+      icon: Zap,
     },
     {
       id: 'chat' as const,
@@ -50,7 +56,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 safe-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-      <div className="grid grid-cols-5 h-16 max-w-md mx-auto items-center px-1">
+      <div className="grid grid-cols-6 h-16 max-w-md mx-auto items-center px-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;

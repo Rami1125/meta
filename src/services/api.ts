@@ -836,5 +836,67 @@ export const api = {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
+  },
+
+  // 12. JONI Make Webhook & Tools Dispatch
+  async triggerJoniMake(to: string, message: string, action: string = 'customer_reply'): Promise<any> {
+    try {
+      const res = await fetch('/api/tools/trigger-joni-make', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, message, action })
+      });
+      return await res.json();
+    } catch (err: any) {
+      // Direct fallback to Make webhook if backend endpoint unreachable
+      try {
+        let cleanTo = String(to || '').replace(/[^0-9]/g, '');
+        if (cleanTo.startsWith('05')) cleanTo = '972' + cleanTo.slice(1);
+        if (!cleanTo) cleanTo = '972508860896';
+
+        const payload = {
+          to: cleanTo,
+          message: String(message || '').trim(),
+          action,
+          sender: 'נועה AI (ח. סבן)'
+        };
+        const directRes = await fetch('https://hook.eu1.make.com/iozzim8loo8gtkq62wb4axycdskfe080', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resText = await directRes.text();
+        return { success: directRes.ok, status: directRes.status, response: resText, payload };
+      } catch (directErr: any) {
+        return { success: false, error: directErr.message };
+      }
+    }
+  },
+
+  async getTools(): Promise<any> {
+    try {
+      const res = await fetch('/api/tools');
+      return await res.json();
+    } catch {
+      return {
+        success: true,
+        tools: [
+          {
+            name: 'trigger_joni_make',
+            description: 'שולח את התפריט או התשובה של נועה ישירות ל-Make (JONI Webhook) לשידור מיידי בוואטסאפ ללקוח.',
+            webhookUrl: 'https://hook.eu1.make.com/iozzim8loo8gtkq62wb4axycdskfe080',
+            parameters: {
+              to: { type: 'string', required: true, description: 'מספר הטלפון של הנמען' },
+              message: { type: 'string', required: true, description: 'תוכן ההודעה או התפריט שנועה שיגרה' },
+              action: { type: 'string', required: false, description: 'סוג הפעולה (send_menu / customer_reply / order_update / container_task)' }
+            },
+            sender: 'נועה AI (ח. סבן)',
+            status: 'active'
+          }
+        ],
+        recentDispatches: []
+      };
+    }
   }
 };
+
