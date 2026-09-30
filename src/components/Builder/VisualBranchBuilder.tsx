@@ -74,34 +74,71 @@ const DEFAULT_VISUAL_FLOW: VisualFlow = {
       position: { x: 440, y: 190 }
     },
     {
-      id: 'node_waste',
-      type: 'condition',
-      title: 'מכולות פסולת',
-      text: '🗑️ איזה גודל מכולה דרוש לך?\n6 קוב / 8 קוב / 12 קוב',
-      options: ['6 קוב', '8 קוב', '12 קוב'],
+      id: 'container_action_menu',
+      type: 'menu',
+      title: '🗑️ שירות מכולות פסולת - ח. סבן',
+      text: 'איזה סוג פעולה למכולה נדרש באתר?',
+      options: [
+        '📍 הצבה חדשה (הבאת מכולה ריקה לאתר)',
+        '🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)',
+        '🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)'
+      ],
       position: { x: 440, y: 340 }
+    },
+    {
+      id: 'container_size_menu',
+      type: 'menu',
+      title: '📦 בחירת נפח המכולה',
+      text: 'אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
+      options: [
+        '📦 6 קוב (מתאים לשיפוץ קל ודירות)',
+        '📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)',
+        '📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)'
+      ],
+      position: { x: 800, y: 340 }
+    },
+    {
+      id: 'container_site_details',
+      type: 'question',
+      title: '📍 איסוף פרטי אתר מכולה',
+      text: 'מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.',
+      position: { x: 1160, y: 340 }
+    },
+    {
+      id: 'create_container_task',
+      type: 'agent',
+      title: 'יצירת משימת מכולה - ראמי',
+      text: '✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)! נוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.',
+      position: { x: 1520, y: 340 }
     },
     {
       id: 'node_ai_free',
       type: 'ai',
       title: 'AI חופשי סבן',
       text: '🤖 מענה אוטומטי חופשי של בינה מלאכותית המתמחה בחומרי בניין וסבן',
-      position: { x: 440, y: 500 }
+      position: { x: 440, y: 540 }
     },
     {
       id: 'node_agent',
       type: 'agent',
       title: 'נציג אנושי - ראמי',
       text: '👷 פנייתך הועברה ישירות לראמי מסארווה (050-886-0896)',
-      position: { x: 800, y: 220 }
+      position: { x: 800, y: 80 }
     }
   ],
   connections: [
     { id: 'c1', fromNodeId: 'node_welcome', fromOptionIndex: 0, toNodeId: 'node_delivery' },
     { id: 'c2', fromNodeId: 'node_welcome', fromOptionIndex: 1, toNodeId: 'node_pickup' },
-    { id: 'c3', fromNodeId: 'node_welcome', fromOptionIndex: 2, toNodeId: 'node_waste' },
+    { id: 'c3', fromNodeId: 'node_welcome', fromOptionIndex: 2, toNodeId: 'container_action_menu' },
     { id: 'c4', fromNodeId: 'node_welcome', fromOptionIndex: 3, toNodeId: 'node_ai_free' },
-    { id: 'c5', fromNodeId: 'node_delivery', toNodeId: 'node_agent' }
+    { id: 'c5', fromNodeId: 'node_delivery', toNodeId: 'node_agent' },
+    { id: 'c_action_1', fromNodeId: 'container_action_menu', fromOptionIndex: 0, toNodeId: 'container_size_menu' },
+    { id: 'c_action_2', fromNodeId: 'container_action_menu', fromOptionIndex: 1, toNodeId: 'container_size_menu' },
+    { id: 'c_action_3', fromNodeId: 'container_action_menu', fromOptionIndex: 2, toNodeId: 'container_size_menu' },
+    { id: 'c_size_1', fromNodeId: 'container_size_menu', fromOptionIndex: 0, toNodeId: 'container_site_details' },
+    { id: 'c_size_2', fromNodeId: 'container_size_menu', fromOptionIndex: 1, toNodeId: 'container_site_details' },
+    { id: 'c_size_3', fromNodeId: 'container_size_menu', fromOptionIndex: 2, toNodeId: 'container_site_details' },
+    { id: 'c_details_task', fromNodeId: 'container_site_details', toNodeId: 'create_container_task' }
   ]
 };
 

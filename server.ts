@@ -204,8 +204,14 @@ async function processIncomingMessage(payload: JoniWebhookPayload, channel: 'jon
       targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
       selectedMenuTitle = '🏪 איסוף עצמי';
     } else if (selectedRowId === 'waste_container' || selectedRowId === 'containers') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'containers_reply');
-      selectedMenuTitle = '🗑️ מכולות פסולת';
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
+      selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
+    } else if (selectedRowId === 'container_place_new' || selectedRowId === 'container_swap' || selectedRowId === 'container_remove') {
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
+      selectedMenuTitle = '📦 בחירת נפח המכולה';
+    } else if (selectedRowId === 'container_size_6' || selectedRowId === 'container_size_8' || selectedRowId === 'container_size_12') {
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
+      selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
     } else if (selectedRowId === 'track_order' || selectedRowId === 'tracking') {
       targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
       selectedMenuTitle = '📍 מעקב משלוח';
@@ -249,15 +255,21 @@ async function processIncomingMessage(payload: JoniWebhookPayload, channel: 'jon
 
     if (isGreeting) {
       targetNode = activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId);
+    } else if (lower.includes('הצבה') || lower.includes('החלפה') || lower.includes('פינוי')) {
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
+      selectedMenuTitle = '📦 בחירת נפח המכולה';
+    } else if (lower.includes('6 קוב') || lower.includes('8 קוב') || lower.includes('12 קוב')) {
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
+      selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
     } else if (lower.includes('1') || lower.includes('הובלה') || lower.includes('משאית') || lower.includes('בלוק')) {
       targetNode = activeFlow.nodes.find(n => n.id === 'delivery_reply');
       selectedMenuTitle = '🚚 הזמנת הובלה לאתר';
     } else if (lower.includes('2') || lower.includes('איסוף') || lower.includes('סניף') || lower.includes('החרש')) {
       targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
       selectedMenuTitle = '🏪 איסוף עצמי מסניף';
-    } else if (lower.includes('3') || lower.includes('מכולה') || lower.includes('פסולת') || lower.includes('קוב')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'containers_reply');
-      selectedMenuTitle = '🗑️ מכולות פינוי פסולת';
+    } else if (lower.includes('3') || lower.includes('מכולה') || lower.includes('פסולת')) {
+      targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
+      selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
     } else if (lower.includes('4') || lower.includes('מעקב') || lower.includes('סטטוס') || lower.includes('הזמנה')) {
       targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
       selectedMenuTitle = '📍 מעקב אחרי הזמנה';
@@ -730,17 +742,94 @@ let visualChatFlow: any = {
   name: 'עץ שיחות ראשי סבן',
   updatedAt: new Date().toISOString(),
   nodes: [
-    { id: 'start_1', type: 'menu', title: 'תפריט ראשי', text: 'ברוכים הבאים לח. סבן חומרי בניין כפר ברא 🏗️', options: ['🚚 הזמנה והובלה', '🏪 איסוף עצמי', '🗑️ מכולות פסולת', '📍 מעקב משלוח'], position: { x: 100, y: 150 } },
-    { id: 'branch_delivery', type: 'message', title: 'הזמנה והובלה', text: '🚚 מעולה! איזה חומר צריך? ברזל, בלוקים, מלט או חול?', position: { x: 450, y: 50 } },
-    { id: 'branch_pickup', type: 'message', title: 'איסוף עצמי', text: '🏪 איסוף עצמי מהמחסן בכפר ברא. מה להכין לך מראש?', position: { x: 450, y: 180 } },
-    { id: 'branch_waste', type: 'message', title: 'מכולות פסולת', text: '🗑️ איזה גודל מכולה תרצה? 6 קוב / 8 קוב / 12 קוב?', position: { x: 450, y: 310 } },
-    { id: 'branch_ai', type: 'ai', title: 'AI חופשי', text: '🤖 תן ל-AI של סבן לענות חופשי על כל שאלה', position: { x: 450, y: 440 } }
+    {
+      id: 'node_welcome',
+      type: 'menu',
+      title: 'תפריט ראשי סבן',
+      text: 'שלום וברוכים הבאים לח. סבן חומרי בניין בע״מ (כפר ברא) 🏗️\nאיך נוכל לעזור היום?',
+      options: ['🚚 הזמנה והובלה', '🏪 איסוף עצמי', '🗑️ מכולות פסולת', '📍 מעקב משלוח'],
+      position: { x: 80, y: 160 }
+    },
+    {
+      id: 'node_delivery',
+      type: 'question',
+      title: 'הזמנה והובלה',
+      text: '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת?',
+      position: { x: 440, y: 40 }
+    },
+    {
+      id: 'node_pickup',
+      type: 'message',
+      title: 'איסוף עצמי',
+      text: '🏪 מחסן כפר ברא פתוח בימים א-ה 06:00-17:00. שלח פירוט ורמי יכין לך הכל!',
+      position: { x: 440, y: 190 }
+    },
+    {
+      id: 'container_action_menu',
+      type: 'menu',
+      title: '🗑️ שירות מכולות פסולת - ח. סבן',
+      text: 'איזה סוג פעולה למכולה נדרש באתר?',
+      options: [
+        '📍 הצבה חדשה (הבאת מכולה ריקה לאתר)',
+        '🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)',
+        '🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)'
+      ],
+      position: { x: 440, y: 340 }
+    },
+    {
+      id: 'container_size_menu',
+      type: 'menu',
+      title: '📦 בחירת נפח המכולה',
+      text: 'אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
+      options: [
+        '📦 6 קוב (מתאים לשיפוץ קל ודירות)',
+        '📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)',
+        '📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)'
+      ],
+      position: { x: 800, y: 340 }
+    },
+    {
+      id: 'container_site_details',
+      type: 'question',
+      title: '📍 איסוף פרטי אתר מכולה',
+      text: 'מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.',
+      position: { x: 1160, y: 340 }
+    },
+    {
+      id: 'create_container_task',
+      type: 'agent',
+      title: 'יצירת משימת מכולה - ראמי',
+      text: '✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)! נוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.',
+      position: { x: 1520, y: 340 }
+    },
+    {
+      id: 'node_ai_free',
+      type: 'ai',
+      title: 'AI חופשי סבן',
+      text: '🤖 מענה אוטומטי חופשי של בינה מלאכותית המתמחה בחומרי בניין וסבן',
+      position: { x: 440, y: 540 }
+    },
+    {
+      id: 'node_agent',
+      type: 'agent',
+      title: 'נציג אנושי - ראמי',
+      text: '👷 פנייתך הועברה ישירות לראמי מסארווה (050-886-0896)',
+      position: { x: 800, y: 80 }
+    }
   ],
   connections: [
-    { from: 'start_1', fromOption: 0, to: 'branch_delivery' },
-    { from: 'start_1', fromOption: 1, to: 'branch_pickup' },
-    { from: 'start_1', fromOption: 2, to: 'branch_waste' },
-    { from: 'start_1', fromOption: 3, to: 'branch_ai' }
+    { id: 'c1', fromNodeId: 'node_welcome', fromOptionIndex: 0, toNodeId: 'node_delivery' },
+    { id: 'c2', fromNodeId: 'node_welcome', fromOptionIndex: 1, toNodeId: 'node_pickup' },
+    { id: 'c3', fromNodeId: 'node_welcome', fromOptionIndex: 2, toNodeId: 'container_action_menu' },
+    { id: 'c4', fromNodeId: 'node_welcome', fromOptionIndex: 3, toNodeId: 'node_ai_free' },
+    { id: 'c5', fromNodeId: 'node_delivery', toNodeId: 'node_agent' },
+    { id: 'c_action_1', fromNodeId: 'container_action_menu', fromOptionIndex: 0, toNodeId: 'container_size_menu' },
+    { id: 'c_action_2', fromNodeId: 'container_action_menu', fromOptionIndex: 1, toNodeId: 'container_size_menu' },
+    { id: 'c_action_3', fromNodeId: 'container_action_menu', fromOptionIndex: 2, toNodeId: 'container_size_menu' },
+    { id: 'c_size_1', fromNodeId: 'container_size_menu', fromOptionIndex: 0, toNodeId: 'container_site_details' },
+    { id: 'c_size_2', fromNodeId: 'container_size_menu', fromOptionIndex: 1, toNodeId: 'container_site_details' },
+    { id: 'c_size_3', fromNodeId: 'container_size_menu', fromOptionIndex: 2, toNodeId: 'container_site_details' },
+    { id: 'c_details_task', fromNodeId: 'container_site_details', toNodeId: 'create_container_task' }
   ]
 };
 
@@ -827,9 +916,54 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
         title: "🏪 איסוף עצמי"
       },
       waste_container: {
-        text: "🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב",
+        text: "🗑️ שירות מכולות פסולת - ח. סבן\nאיזה סוג פעולה למכולה נדרש באתר?\n\n1️⃣ 📍 הצבה חדשה (הבאת מכולה ריקה לאתר)\n2️⃣ 🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)\n3️⃣ 🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)",
+        next: "await_container_action",
+        title: "🗑️ שירות מכולות פסולת - ח. סבן"
+      },
+      container_action_menu: {
+        text: "🗑️ שירות מכולות פסולת - ח. סבן\nאיזה סוג פעולה למכולה נדרש באתר?\n\n1️⃣ 📍 הצבה חדשה (הבאת מכולה ריקה לאתר)\n2️⃣ 🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)\n3️⃣ 🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)",
+        next: "await_container_action",
+        title: "🗑️ שירות מכולות פסולת - ח. סבן"
+      },
+      container_place_new: {
+        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
         next: "await_container_size",
-        title: "🗑️ מכולות פסולת"
+        title: "📦 בחירת נפח המכולה"
+      },
+      container_swap: {
+        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
+        next: "await_container_size",
+        title: "📦 בחירת נפח המכולה"
+      },
+      container_remove: {
+        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
+        next: "await_container_size",
+        title: "📦 בחירת נפח המכולה"
+      },
+      container_size_menu: {
+        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
+        next: "await_container_size",
+        title: "📦 בחירת נפח המכולה"
+      },
+      container_size_6: {
+        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
+        next: "await_container_site_details",
+        title: "📍 איסוף פרטי אתר מכולה"
+      },
+      container_size_8: {
+        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
+        next: "await_container_site_details",
+        title: "📍 איסוף פרטי אתר מכולה"
+      },
+      container_size_12: {
+        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
+        next: "await_container_site_details",
+        title: "📍 איסוף פרטי אתר מכולה"
+      },
+      container_site_details: {
+        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
+        next: "await_container_site_details",
+        title: "📍 איסוף פרטי אתר מכולה"
       },
       track_order: {
         text: "📍 שלח מספר הזמנה ואבדוק לך מיד",
@@ -844,6 +978,8 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       : selectedId === 'tracking' ? 'track_order'
       : selectedId;
 
+    const currentSession = userSessions.get(String(cleanPayload.from).replace(/[^0-9]/g, ''));
+
     if (normalizedId && flows[normalizedId]) {
       console.log("MENU SELECTED:", normalizedId);
       const flow = flows[normalizedId];
@@ -851,6 +987,72 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       flowTitle = flow.title;
       chosenBranchId = normalizedId;
       await updateSession(cleanPayload.from, { step: flow.next, lastChoice: normalizedId });
+    } else if (currentSession && currentSession.step && currentSession.step.startsWith('await_container')) {
+      if (currentSession.step === 'await_container_action') {
+        let action = 'הצבה חדשה';
+        const t = cleanPayload.text.toLowerCase();
+        if (t.includes('החלפה') || t === '2') action = 'החלפה';
+        else if (t.includes('פינוי') || t.includes('הוצאה') || t === '3') action = 'הוצאה ופינוי';
+
+        replyText = flows.container_size_menu.text;
+        flowTitle = flows.container_size_menu.title;
+        chosenBranchId = 'container_size_menu';
+        await updateSession(cleanPayload.from, { step: 'await_container_size', lastChoice: 'container_size_menu', containerAction: action });
+      } else if (currentSession.step === 'await_container_size') {
+        let size = '8 קוב';
+        const t = cleanPayload.text.toLowerCase();
+        if (t.includes('6') || t === '1') size = '6 קוב';
+        else if (t.includes('12') || t === '3') size = '12 קוב';
+
+        replyText = flows.container_site_details.text;
+        flowTitle = flows.container_site_details.title;
+        chosenBranchId = 'container_site_details';
+        await updateSession(cleanPayload.from, { step: 'await_container_site_details', lastChoice: 'container_site_details', containerSize: size });
+      } else if (currentSession.step === 'await_container_site_details') {
+        const action = currentSession.containerAction || 'הצבה חדשה';
+        const size = currentSession.containerSize || '8 קוב';
+        const address = cleanPayload.text;
+
+        const newTaskId = `task_cnt_${Date.now()}`;
+        tasks.unshift({
+          id: newTaskId,
+          clientPhone: cleanPayload.from,
+          clientName: cleanPayload.name || 'לקוח מכולה',
+          title: `מכולת ${size} (${action}) - ${address.substring(0, 30)}`,
+          category: 'containers',
+          priority: 'urgent',
+          assignedTo: 'ראמי מסארווה (050-886-0896)',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          description: `פעולה: ${action} | נפח: ${size} | כתובת ופרטי אתר: ${address}`
+        });
+
+        // Write directly to Firebase RTDB joni/incoming
+        try {
+          await fetch(`${FB_ROOT}/joni/incoming.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              action: 'create_container_task',
+              task_id: newTaskId,
+              container_action: action,
+              container_size: size,
+              site_details: address,
+              customer_phone: cleanPayload.from,
+              customer_name: cleanPayload.name,
+              assigned_to: 'ראמי מסארווה (050-886-0896)',
+              timestamp: Date.now()
+            })
+          });
+        } catch (e) {
+          console.error('Failed to write container task to Firebase:', e);
+        }
+
+        replyText = `✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)!\n\n📍 סוג פעולה: ${action}\n📦 גודל: ${size}\n🏠 כתובת ופרטים: ${address}\n\nנוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.`;
+        flowTitle = 'יצירת משימת מכולה';
+        chosenBranchId = 'create_container_task';
+        await updateSession(cleanPayload.from, { step: 'completed', lastChoice: 'create_container_task' });
+      }
     } else {
       // 7. Check if user typed an exact single menu option ("1", "2", "3", "4"), otherwise FREE AI CHAT!
       const trimmed = cleanPayload.text.trim().toLowerCase();
@@ -867,6 +1069,7 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
         replyText = flows[mappedId].text;
         flowTitle = flows[mappedId].title;
         chosenBranchId = mappedId;
+        await updateSession(cleanPayload.from, { step: flows[mappedId].next, lastChoice: mappedId });
       } else {
         // Free AI Chat Engine Response (e.g. "ברזל 2 טון לכפר סבא" -> asks for כמות, כתובת, תאריך)
         const aiResult = await generateSabanAiChatReply(cleanPayload.text, [], cleanPayload.from);
@@ -1153,8 +1356,15 @@ app.get('/api/chat_flows/main', async (_req: Request, res: Response) => {
     const fbRes = await fetch(`${FB_ROOT}/chat_flows/main.json`);
     if (fbRes.ok) {
       const data = await fbRes.json();
-      if (data && data.nodes) {
+      if (data && data.nodes && data.nodes.some((n: any) => n.id === 'container_action_menu')) {
         visualChatFlow = data;
+      } else {
+        // Sync the complete container tree to Firebase
+        await fetch(`${FB_ROOT}/chat_flows/main.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify(visualChatFlow)
+        }).catch(() => {});
       }
     }
   } catch (e) {
@@ -1185,9 +1395,20 @@ app.post('/api/chat_flows/main', async (req: Request, res: Response) => {
 });
 
 // Session store for WhatsApp interactive conversations
-const userSessions = new Map<string, { step: string; lastChoice?: string; updatedAt: string }>();
+const userSessions = new Map<string, { 
+  step: string; 
+  lastChoice?: string; 
+  containerAction?: string; 
+  containerSize?: string; 
+  updatedAt: string; 
+}>();
 
-async function updateSession(from: string, sessionData: { step: string; lastChoice: string }) {
+async function updateSession(from: string, sessionData: { 
+  step: string; 
+  lastChoice?: string; 
+  containerAction?: string; 
+  containerSize?: string; 
+}) {
   const cleanFrom = String(from).replace(/[^0-9]/g, '');
   userSessions.set(cleanFrom, {
     ...userSessions.get(cleanFrom),

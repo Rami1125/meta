@@ -60,7 +60,7 @@ export const DEFAULT_FLOW: FlowTree = {
             id: 'waste_container',
             title: '🗑️ מכולות פסולת',
             description: 'פינוי פסולת בניין',
-            targetBlockId: 'containers_reply'
+            targetBlockId: 'container_action_menu'
           },
           {
             id: 'track_order',
@@ -112,30 +112,100 @@ export const DEFAULT_FLOW: FlowTree = {
       }
     },
     {
-      id: 'containers_reply',
+      id: 'container_action_menu',
+      type: 'list_menu',
+      title: '🗑️ שירות מכולות פסולת - ח. סבן',
+      description: 'סוג פעולה נדרשת למכולה באתר',
+      position: { x: 580, y: 380 },
+      data: {
+        type: 'list_menu',
+        header: '🗑️ שירות מכולות פסולת - ח. סבן',
+        body: 'איזה סוג פעולה למכולה נדרש באתר?',
+        footer: 'ח. סבן חומרי בניין כפר ברא',
+        buttonText: 'בחר פעולה',
+        sectionTitle: 'סוגי פעולות מכולה',
+        rows: [
+          {
+            id: 'container_place_new',
+            title: '📍 הצבה חדשה',
+            description: 'הבאת מכולה ריקה לאתר',
+            targetBlockId: 'container_size_menu'
+          },
+          {
+            id: 'container_swap',
+            title: '🔄 החלפה',
+            description: 'הוצאת מכולה מלאה והצבת ריקה',
+            targetBlockId: 'container_size_menu'
+          },
+          {
+            id: 'container_remove',
+            title: '🚛 הוצאה ופינוי',
+            description: 'פינוי סופי של המכולה וסגירת האתר',
+            targetBlockId: 'container_size_menu'
+          }
+        ]
+      }
+    },
+    {
+      id: 'container_size_menu',
+      type: 'list_menu',
+      title: '📦 בחירת נפח המכולה',
+      description: 'בחירת נפח מכולה ודגש תפעולי',
+      position: { x: 990, y: 380 },
+      data: {
+        type: 'list_menu',
+        header: '📦 בחירת נפח המכולה',
+        body: 'אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
+        footer: 'ח. סבן - משאיות רמסע',
+        buttonText: 'בחר גודל',
+        sectionTitle: 'נפחי מכולה זמינים',
+        rows: [
+          {
+            id: 'container_size_6',
+            title: '📦 6 קוב',
+            description: 'מתאים לשיפוץ קל ודירות',
+            targetBlockId: 'container_site_details'
+          },
+          {
+            id: 'container_size_8',
+            title: '📦 8 קוב',
+            description: 'מתאים לפסולת כבדה, בלוקים ובטון',
+            targetBlockId: 'container_site_details'
+          },
+          {
+            id: 'container_size_12',
+            title: '📦 12 קוב',
+            description: 'מתאים לפסולת עץ, גבס ונפח גדול',
+            targetBlockId: 'container_site_details'
+          }
+        ]
+      }
+    },
+    {
+      id: 'container_site_details',
       type: 'text',
-      title: 'ענף מכולות (waste_container)',
-      description: 'בירור גודל מכולת פסולת',
-      position: { x: 580, y: 400 },
+      title: '📍 איסוף פרטי אתר מכולה',
+      description: 'איסוף כתובת מדויקת ואיש קשר',
+      position: { x: 1390, y: 380 },
       data: {
         type: 'text',
-        text: '🗑️ איזה גודל מכולה?\n6 קוב / 8 קוב / 12 קוב',
+        text: 'מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.',
         targetBlockId: 'create_container_task'
       }
     },
     {
       id: 'create_container_task',
       type: 'task',
-      title: 'יצירת משימת מכולה',
-      description: 'משימה למנהל צי מכולות',
-      position: { x: 990, y: 400 },
+      title: 'יצירת משימת מכולה - ראמי',
+      description: 'סנכרון ל-Firebase RTDB ויצירת משימה לרמי',
+      position: { x: 1790, y: 380 },
       data: {
         type: 'task',
-        taskTitleTemplate: 'הצבת מכולת פסולת - {{from}}',
+        taskTitleTemplate: 'מכולת פסולת - {{from}}',
         category: 'containers',
-        urgency: 'normal',
-        assignedTo: 'מחלקת מכולות',
-        confirmationMessage: '✅ הזמנת המכולה נרשמה בהצלחה. נהג המשכיר יתאם הגעה.',
+        urgency: 'urgent',
+        assignedTo: 'ראמי מסארווה (050-886-0896)',
+        confirmationMessage: '✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)! נוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.',
         targetBlockId: undefined
       }
     },
@@ -220,17 +290,53 @@ export const DEFAULT_FLOW: FlowTree = {
       id: 'edge_containers',
       source: 'welcome_menu',
       sourceHandle: 'waste_container',
-      target: 'containers_reply'
+      target: 'container_action_menu'
     },
     {
       id: 'edge_containers_legacy',
       source: 'welcome_menu',
       sourceHandle: 'containers',
-      target: 'containers_reply'
+      target: 'container_action_menu'
+    },
+    {
+      id: 'edge_action_place',
+      source: 'container_action_menu',
+      sourceHandle: 'container_place_new',
+      target: 'container_size_menu'
+    },
+    {
+      id: 'edge_action_swap',
+      source: 'container_action_menu',
+      sourceHandle: 'container_swap',
+      target: 'container_size_menu'
+    },
+    {
+      id: 'edge_action_remove',
+      source: 'container_action_menu',
+      sourceHandle: 'container_remove',
+      target: 'container_size_menu'
+    },
+    {
+      id: 'edge_size_6',
+      source: 'container_size_menu',
+      sourceHandle: 'container_size_6',
+      target: 'container_site_details'
+    },
+    {
+      id: 'edge_size_8',
+      source: 'container_size_menu',
+      sourceHandle: 'container_size_8',
+      target: 'container_site_details'
+    },
+    {
+      id: 'edge_size_12',
+      source: 'container_size_menu',
+      sourceHandle: 'container_size_12',
+      target: 'container_site_details'
     },
     {
       id: 'edge_container_task',
-      source: 'containers_reply',
+      source: 'container_site_details',
       target: 'create_container_task'
     },
     {
