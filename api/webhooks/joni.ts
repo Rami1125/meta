@@ -18,7 +18,7 @@ export const FALLBACK_WELCOME_TEXT = `ח. סבן חומרי בניין 🏗️
 
 // Helper: Retrieve valid Vercel environment credentials
 function getMetaCredentials() {
-  const token = process.env.WHATSAPP_TOKEN || 'EAAfybToWbKABSiSBQ2DC7MzDWwVTAZA583wK5RJsxGjTvfzgwMWVZB20EsdP1frjZAeXqZB16dJZCZA3C15K1YEtkQgLuCEPzVsoD8r5ftsQyy2Ys7TcFlsi0m6RRZASZBm8KHGHZBx6GocsVpWukIUKwlHLbt2l53VM2IgcCZCpZCPaVapi1sih258Mes2irUGKQZDZD';
+  const token = process.env.WHATSAPP_TOKEN || '';
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID || '646128321917738';
   return { token, phoneId };
 }

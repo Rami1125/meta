@@ -33,7 +33,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // WhatsApp Cloud API Configuration (Server-Side Only - Sealed)
 const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID || '646128321917738';
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || 'EAAfybToWbKABSiSBQ2DC7MzDWwVTAZA583wK5RJsxGjTvfzgwMWVZB20EsdP1frjZAeXqZB16dJZCZA3C15K1YEtkQgLuCEPzVsoD8r5ftsQyy2Ys7TcFlsi0m6RRZASZBm8KHGHZBx6GocsVpWukIUKwlHLbt2l53VM2IgcCZCpZCPaVapi1sih258Mes2irUGKQZDZD';
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const GRAPH_VERSION = process.env.GRAPH_VERSION || 'v20.0';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'רמי מסארוה / ח. סבן';
 const DISPLAY_PHONE = process.env.DISPLAY_PHONE || '+972508860896';
