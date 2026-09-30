@@ -32,7 +32,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 // WhatsApp Cloud API Configuration (Server-Side Only - Sealed)
-const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID || '646128321917738';
+const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID || '646128321917738';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || 'EAAfybToWbKABSiSBQ2DC7MzDWwVTAZA583wK5RJsxGjTvfzgwMWVZB20EsdP1frjZAeXqZB16dJZCZA3C15K1YEtkQgLuCEPzVsoD8r5ftsQyy2Ys7TcFlsi0m6RRZASZBm8KHGHZBx6GocsVpWukIUKwlHLbt2l53VM2IgcCZCpZCPaVapi1sih258Mes2irUGKQZDZD';
 const GRAPH_VERSION = process.env.GRAPH_VERSION || 'v20.0';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'רמי מסארוה / ח. סבן';
@@ -140,11 +140,21 @@ async function sendToGoogleSheets(payload: Record<string, unknown>): Promise<any
   }
 }
 
+const FALLBACK_WELCOME_TEXT = `ח. סבן חומרי בניין 🏗️
+
+ברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:
+
+1 - 🚚 הזמנה והובלה לאתר
+
+2 - 🏭 איסוף עצמי ושעות פעילות
+
+3 - 🗑️ מכולות פסולת (6/8/12 קוב)
+
+4 - 🔍 מעקב משלוח ונהגים`;
+
 // Helper: Dispatch Meta Cloud API Interactive List
 async function sendMetaInteractiveList(to: string, listData: ListMenuData): Promise<{ success: boolean; fallbackText?: string; messageId?: string }> {
-  // Build fallback text representation with numbered options
-  const numberedOptions = listData.rows.map((r, i) => `${i + 1}. *${r.title}* - ${r.description}`).join('\n');
-  const fallbackText = `${listData.header ? `*${listData.header}*\n\n` : ''}${listData.body}\n\n${numberedOptions}\n\n_${listData.footer || 'השב עם מספר האפשרות'}_`;
+  const fallbackText = FALLBACK_WELCOME_TEXT;
 
   const phoneId = WHATSAPP_PHONE_ID || settings.metaPhoneNumberId;
   const token = WHATSAPP_TOKEN || settings.metaAccessToken;
@@ -166,9 +176,9 @@ async function sendMetaInteractiveList(to: string, listData: ListMenuData): Prom
     type: 'interactive',
     interactive: {
       type: 'list',
-      header: listData.header ? { type: 'text', text: listData.header } : undefined,
-      body: { text: listData.body },
-      footer: listData.footer ? { text: listData.footer } : undefined,
+      header: listData.header ? { type: 'text', text: listData.header } : { type: 'text', text: 'ח. סבן חומרי בניין 🏗️' },
+      body: { text: listData.body || 'ברוכים הבאים למרכז ההזמנות! הקלד מספר או בחר שירות:' },
+      footer: listData.footer ? { text: listData.footer } : { text: 'כפר ברא | 050-8860896' },
       action: {
         button: listData.buttonText || 'בחר שירות',
         sections: [
@@ -195,12 +205,35 @@ async function sendMetaInteractiveList(to: string, listData: ListMenuData): Prom
       body: JSON.stringify(metaBody)
     });
 
-    const data: any = await res.json().catch(() => ({}));
+    const status = res.status;
+    const resText = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(resText);
+    } catch {
+      data = { raw: resText };
+    }
+
+    console.log(`[Meta Graph API Outgoing List] Status Code: ${status}, Response:`, JSON.stringify(data));
+
+    const isAuthError = status === 401 ||
+      status === 403 ||
+      data?.error?.code === 190 ||
+      data?.error?.type === 'OAuthException' ||
+      (typeof data?.error?.message === 'string' && (
+        data.error.message.includes('Session has expired') ||
+        data.error.message.includes('Error validating access token') ||
+        data.error.message.includes('The access token could not be decrypted')
+      ));
+
+    if (isAuthError) {
+      console.error("WHATSAPP_TOKEN is expired or invalid in Vercel env");
+    }
 
     if (res.ok && data.messages?.[0]?.id) {
       return { success: true, messageId: data.messages[0].id };
     } else {
-      console.warn('Meta API returned non-ok, falling back to text:', data);
+      console.warn('Meta API returned non-ok for interactive list, falling back to text:', data);
       return { success: false, fallbackText };
     }
   } catch (err) {
@@ -1189,11 +1222,12 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
         chosenBranchId = mappedId;
         await updateSession(cleanPayload.from, { step: flows[mappedId].next, lastChoice: mappedId });
       } else {
-        // Free AI Chat Engine Response (e.g. "ברזל 2 טון לכפר סבא" -> asks for כמות, כתובת, תאריך)
-        const aiResult = await generateSabanAiChatReply(cleanPayload.text, [], cleanPayload.from);
-        replyText = aiResult.reply;
-        flowTitle = 'מענה AI סבן חופשי';
-        chosenBranchId = aiResult.intent;
+        // Global Catch-All Default: Any incoming message to +972508860896 receives welcome_menu
+        console.log(`[Global Catch-All Trigger] Dispatching welcome menu to ${cleanPayload.from}...`);
+        replyText = FALLBACK_WELCOME_TEXT;
+        flowTitle = 'תפריט ראשי סבן (Catch-All)';
+        chosenBranchId = 'welcome_menu';
+        await updateSession(cleanPayload.from, { step: 'welcome_menu', lastChoice: 'welcome_menu' });
       }
     }
 
@@ -1703,7 +1737,31 @@ async function sendWhatsAppText(to: string, text: string): Promise<{ success: bo
       },
       body: JSON.stringify(body)
     });
-    const data: any = await res.json().catch(() => ({}));
+    const status = res.status;
+    const resText = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(resText);
+    } catch {
+      data = { raw: resText };
+    }
+
+    console.log(`[Meta Graph API Outgoing Text] Status Code: ${status}, Response:`, JSON.stringify(data));
+
+    const isAuthError = status === 401 ||
+      status === 403 ||
+      data?.error?.code === 190 ||
+      data?.error?.type === 'OAuthException' ||
+      (typeof data?.error?.message === 'string' && (
+        data.error.message.includes('Session has expired') ||
+        data.error.message.includes('Error validating access token') ||
+        data.error.message.includes('The access token could not be decrypted')
+      ));
+
+    if (isAuthError) {
+      console.error("WHATSAPP_TOKEN is expired or invalid in Vercel env");
+    }
+
     if (res.ok && data.messages?.[0]?.id) {
       console.log(`WhatsApp text dispatched to ${cleanTo}, message_id: ${data.messages[0].id}`);
       return { success: true, messageId: data.messages[0].id };
