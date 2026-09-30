@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ref, get, onChildAdded } from 'firebase/database';
 import { db } from '../firebase';
+import { api } from '../services/api';
 
 export interface WhatsAppMessage {
   id: string;
@@ -83,14 +84,13 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   useEffect(() => {
     console.log("🔍 START LISTENING TO: joni/incoming");
 
-    // Fetch live flow menu options dynamically
-    fetch('/api/flow')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.flow && data.flow.nodes) {
-          const rootNode = data.flow.nodes.find((n: any) => n.id === data.flow.rootBlockId || n.isRoot) || data.flow.nodes[0];
-          if (rootNode && rootNode.data && Array.isArray(rootNode.data.rows)) {
-            const rowTitles = rootNode.data.rows.map((r: any) => r.title);
+    // Fetch live flow menu options dynamically directly from Firebase RTDB
+    api.getFlow()
+      .then(flow => {
+        if (flow && flow.nodes) {
+          const rootNode = flow.nodes.find((n: any) => n.id === flow.rootBlockId || n.isRoot) || flow.nodes[0];
+          if (rootNode && rootNode.data?.type === 'list_menu' && Array.isArray((rootNode.data as any).rows)) {
+            const rowTitles = (rootNode.data as any).rows.map((r: any) => r.title);
             if (rowTitles.length > 0) {
               setMessages(prev => prev.map(m => m.isMenuCard ? { ...m, options: rowTitles } : m));
             }
@@ -238,21 +238,15 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
     setIsTyping(true);
 
     try {
-      // Call Free Chat AI engine endpoint
-      const res = await fetch('/api/chat/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: initialRecipient.replace(/[^0-9]/g, ''),
-          text,
-          history: messages.map(m => ({
-            role: m.sender === 'user' ? 'user' : 'model',
-            text: m.text
-          }))
-        })
+      // Call direct Gemini Chat AI engine
+      const data = await api.chatAi({
+        from: initialRecipient.replace(/[^0-9]/g, ''),
+        text,
+        history: messages.map(m => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          text: m.text
+        }))
       });
-
-      const data = await res.json().catch(() => ({}));
       setIsTyping(false);
 
       const botReply = data.reply || "תודה שפנית לח. סבן חומרי בניין כפר ברא 🏗️. נשמח לספק לך את כל חומרי הבניין הדרושים!";

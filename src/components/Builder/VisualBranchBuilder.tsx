@@ -24,6 +24,7 @@ import {
 import { WhatsAppChat } from '../WhatsAppChat';
 import { NoaCanvasCompanion, NoaFlightCommand } from '../Companion/NoaCanvasCompanion';
 import { audioService } from '../../services/audioService';
+import { api } from '../../services/api';
 
 export interface VisualBranchBuilderProps {
   onOpenSimulator?: () => void;
@@ -345,10 +346,9 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
     });
   }, [flow.nodes]);
 
-  // Load flow on mount
+  // Load flow on mount directly from Firebase RTDB
   useEffect(() => {
-    fetch('/api/chat_flows/main')
-      .then(res => res.json())
+    api.getChatFlow()
       .then(data => {
         if (data && data.nodes && data.nodes.length > 0) {
           setFlow(data);
@@ -361,12 +361,8 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      const res = await fetch('/api/chat_flows/main', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flow)
-      });
-      if (res.ok) {
+      const res = await api.saveChatFlow(flow);
+      if (res && res.success) {
         setSaveSuccess(true);
         if (onSave) onSave();
         setTimeout(() => setSaveSuccess(false), 3000);

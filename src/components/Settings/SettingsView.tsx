@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { StudioSettings } from '../../types/studio';
 import { api } from '../../services/api';
+import { ref, push } from 'firebase/database';
+import { db } from '../../firebase';
 
 interface SettingsViewProps {
   settings: StudioSettings;
@@ -144,19 +146,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsTestingJoni(true);
     setJoniTestResult(null);
     try {
-      const res = await fetch('/api/webhooks/joni', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: '972508860896',
-          text: 'בדיקה 🚚',
-          name: 'ראמי מסארווה'
-        })
-      });
-      const data = await res.json();
+      const clean = {
+        from: '972508860896',
+        text: 'בדיקה 🚚',
+        name: 'ראמי מסארווה',
+        timestamp: Date.now()
+      };
+      await push(ref(db, 'joni/incoming'), clean);
       setJoniTestResult({
-        status: res.status,
-        ...data
+        status: 200,
+        success: true,
+        received: clean
       });
       if (onRefreshData) onRefreshData();
     } catch (err: any) {

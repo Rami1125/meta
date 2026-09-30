@@ -669,3 +669,124 @@ export const INITIAL_LOGS: LogEntry[] = [
     status: 'delivered'
   }
 ];
+
+export interface VisualBlock {
+  id: string;
+  type: 'message' | 'menu' | 'question' | 'condition' | 'agent' | 'ai';
+  title: string;
+  text: string;
+  options?: string[];
+  position: { x: number; y: number };
+}
+
+export interface VisualConnection {
+  id: string;
+  fromNodeId: string;
+  fromOptionIndex?: number;
+  toNodeId: string;
+}
+
+export interface VisualFlow {
+  id: string;
+  name: string;
+  updatedAt: string;
+  nodes: VisualBlock[];
+  connections: VisualConnection[];
+}
+
+export const DEFAULT_VISUAL_FLOW: VisualFlow = {
+  id: 'main',
+  name: 'עץ שיחות ראשי - ח. סבן חומרי בניין',
+  updatedAt: new Date().toISOString(),
+  nodes: [
+    {
+      id: 'node_welcome',
+      type: 'menu',
+      title: 'תפריט ראשי סבן',
+      text: 'שלום וברוכים הבאים לח. סבן חומרי בניין בע״מ (כפר ברא) 🏗️\nאיך נוכל לעזור היום?',
+      options: ['🚚 הזמנה והובלה', '🏪 איסוף עצמי', '🗑️ מכולות פסולת', '📍 מעקב משלוח'],
+      position: { x: 80, y: 160 }
+    },
+    {
+      id: 'node_delivery',
+      type: 'question',
+      title: 'הזמנה והובלה',
+      text: '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת?',
+      position: { x: 440, y: 40 }
+    },
+    {
+      id: 'node_pickup',
+      type: 'message',
+      title: 'איסוף עצמי',
+      text: '🏪 מחסן כפר ברא פתוח בימים א-ה 06:00-17:00. שלח פירוט ורמי יכין לך הכל!',
+      position: { x: 440, y: 190 }
+    },
+    {
+      id: 'container_action_menu',
+      type: 'menu',
+      title: '🗑️ שירות מכולות פסולת - ח. סבן',
+      text: 'איזה סוג פעולה למכולה נדרש באתר?',
+      options: [
+        '📍 הצבה חדשה (הבאת מכולה ריקה לאתר)',
+        '🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)',
+        '🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)'
+      ],
+      position: { x: 440, y: 340 }
+    },
+    {
+      id: 'container_size_menu',
+      type: 'menu',
+      title: '📦 בחירת נפח המכולה',
+      text: 'אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
+      options: [
+        '📦 6 קוב (מתאים לשיפוץ קל ודירות)',
+        '📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)',
+        '📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)'
+      ],
+      position: { x: 800, y: 340 }
+    },
+    {
+      id: 'container_site_details',
+      type: 'question',
+      title: '📍 איסוף פרטי אתר מכולה',
+      text: 'מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.',
+      position: { x: 1160, y: 340 }
+    },
+    {
+      id: 'create_container_task',
+      type: 'agent',
+      title: 'יצירת משימת מכולה - ראמי',
+      text: '✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)! נוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.',
+      position: { x: 1520, y: 340 }
+    },
+    {
+      id: 'node_ai_free',
+      type: 'ai',
+      title: 'AI חופשי סבן',
+      text: '🤖 מענה אוטומטי חופשי של בינה מלאכותית המתמחה בחומרי בניין וסבן',
+      position: { x: 440, y: 540 }
+    },
+    {
+      id: 'node_agent',
+      type: 'agent',
+      title: 'נציג אנושי - ראמי',
+      text: '👷 פנייתך הועברה ישירות לראמי מסארווה (050-886-0896)',
+      position: { x: 800, y: 80 }
+    }
+  ],
+  connections: [
+    { id: 'c1', fromNodeId: 'node_welcome', fromOptionIndex: 0, toNodeId: 'node_delivery' },
+    { id: 'c2', fromNodeId: 'node_welcome', fromOptionIndex: 1, toNodeId: 'node_pickup' },
+    { id: 'c3', fromNodeId: 'node_welcome', fromOptionIndex: 2, toNodeId: 'container_action_menu' },
+    { id: 'c4', fromNodeId: 'node_welcome', fromOptionIndex: 3, toNodeId: 'node_ai_free' },
+    { id: 'c5', fromNodeId: 'node_delivery', toNodeId: 'node_agent' },
+    { id: 'c_action_1', fromNodeId: 'container_action_menu', fromOptionIndex: 0, toNodeId: 'container_size_menu' },
+    { id: 'c_action_2', fromNodeId: 'container_action_menu', fromOptionIndex: 1, toNodeId: 'container_size_menu' },
+    { id: 'c_action_3', fromNodeId: 'container_action_menu', fromOptionIndex: 2, toNodeId: 'container_size_menu' },
+    { id: 'c_size_1', fromNodeId: 'container_size_menu', fromOptionIndex: 0, toNodeId: 'container_site_details' },
+    { id: 'c_size_2', fromNodeId: 'container_size_menu', fromOptionIndex: 1, toNodeId: 'container_site_details' },
+    { id: 'c_size_3', fromNodeId: 'container_size_menu', fromOptionIndex: 2, toNodeId: 'container_site_details' },
+    { id: 'c_details_task', fromNodeId: 'container_site_details', toNodeId: 'create_container_task' }
+  ]
+};
+

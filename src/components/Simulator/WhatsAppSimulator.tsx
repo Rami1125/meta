@@ -23,6 +23,7 @@ import { ref, onValue } from 'firebase/database';
 import { db } from '../../firebase';
 import { FlowTree, ListMenuRow, ListMenuData, StudioNode } from '../../types/studio';
 import { DEFAULT_FLOW } from '../../data/defaultFlow';
+import { api } from '../../services/api';
 
 interface WhatsAppSimulatorProps {
   isOpen: boolean;
@@ -130,23 +131,15 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     }
   }, [flow]);
 
-  // Online Flow Fetching function
+  // Online Flow Fetching function directly from Firebase RTDB via api
   const fetchOnlineFlow = useCallback(async (isInitial = false) => {
     setIsSyncing(true);
     try {
-      const [flowRes, visualRes] = await Promise.all([
-        fetch(`/api/flow?t=${Date.now()}`).then(r => r.json()).catch(() => null),
-        fetch(`/api/chat_flows/main?t=${Date.now()}`).then(r => r.json()).catch(() => null)
-      ]);
-
+      const flowRes = await api.getFlow().catch(() => null);
       let updated = false;
-      let newFlow: FlowTree | null = null;
+      let newFlow: FlowTree | null = flowRes || null;
 
-      if (flowRes && flowRes.flow && flowRes.flow.nodes) {
-        newFlow = flowRes.flow;
-      }
-
-      if (newFlow) {
+      if (newFlow && newFlow.nodes) {
         setLiveFlow(prev => {
           const prevRows = JSON.stringify(getRootMenuData(prev).rows);
           const newRows = JSON.stringify(getRootMenuData(newFlow!).rows);
@@ -266,18 +259,13 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/simulate-incoming', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: phone,
-          text: textToSend,
-          listReplyId: listReplyId,
-          customerName: 'בדיקת סימולטור'
-        })
+      const data = await api.simulateIncoming({
+        from: phone,
+        text: textToSend,
+        listReplyId: listReplyId,
+        customerName: 'בדיקת סימולטור'
       });
 
-      const data = await res.json();
       setIsLoading(false);
 
       if (data && data.targetNode) {
