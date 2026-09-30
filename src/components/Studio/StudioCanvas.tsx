@@ -693,6 +693,8 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
                 onSelect={handleSelectNode}
                 onDelete={handleDeleteNode}
                 onStartConnect={handleStartConnect}
+                connectingSource={connectingSource}
+                onSelectTarget={completeConnection}
               />
             </div>
           ))}

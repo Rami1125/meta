@@ -183,6 +183,14 @@ export const VisualBranchBuilder: React.FC = () => {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
+  // Connection state for Click-to-Connect and Drag-to-Connect
+  const [connectingSource, setConnectingSource] = useState<{
+    nodeId: string;
+    optionIndex?: number;
+  } | null>(null);
+  const [livePointerPos, setLivePointerPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingWire, setIsDraggingWire] = useState(false);
+
   // Load flow on mount
   useEffect(() => {
     fetch('/api/chat_flows/main')
@@ -242,6 +250,11 @@ export const VisualBranchBuilder: React.FC = () => {
     if (selectedBlockId === nodeId) {
       setSelectedBlockId(null);
     }
+    if (connectingSource?.nodeId === nodeId) {
+      setConnectingSource(null);
+      setIsDraggingWire(false);
+      setLivePointerPos(null);
+    }
   };
 
   const selectedBlock = flow.nodes.find(n => n.id === selectedBlockId);
@@ -254,7 +267,7 @@ export const VisualBranchBuilder: React.FC = () => {
     }));
   };
 
-  // Node Dragging Handlers
+  // Node Dragging Handlers (Mouse & Touch)
   const handleMouseDown = (e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
     const node = flow.nodes.find(n => n.id === nodeId);
@@ -267,19 +280,132 @@ export const VisualBranchBuilder: React.FC = () => {
     });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!draggingNodeId) return;
-    const newX = Math.max(10, Math.round((e.clientX - dragOffset.x) / zoom));
-    const newY = Math.max(10, Math.round((e.clientY - dragOffset.y) / zoom));
+  const handleTouchStart = (e: React.TouchEvent, nodeId: string) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const node = flow.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    setDraggingNodeId(nodeId);
+    setSelectedBlockId(nodeId);
+    setDragOffset({
+      x: touch.clientX - node.position.x * zoom,
+      y: touch.clientY - node.position.y * zoom
+    });
+  };
 
-    setFlow(prev => ({
-      ...prev,
-      nodes: prev.nodes.map(n => n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n)
-    }));
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (draggingNodeId) {
+      const newX = Math.max(10, Math.round((e.clientX - dragOffset.x) / zoom));
+      const newY = Math.max(10, Math.round((e.clientY - dragOffset.y) / zoom));
+
+      setFlow(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n)
+      }));
+    } else if (isDraggingWire && connectingSource && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const scrollLeft = canvasRef.current.scrollLeft;
+      const scrollTop = canvasRef.current.scrollTop;
+      setLivePointerPos({
+        x: (e.clientX - rect.left + scrollLeft) / zoom,
+        y: (e.clientY - rect.top + scrollTop) / zoom
+      });
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (draggingNodeId && e.touches.length === 1) {
+      const touch = e.touches[0];
+      const newX = Math.max(10, Math.round((touch.clientX - dragOffset.x) / zoom));
+      const newY = Math.max(10, Math.round((touch.clientY - dragOffset.y) / zoom));
+
+      setFlow(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n)
+      }));
+    } else if (isDraggingWire && connectingSource && canvasRef.current && e.touches[0]) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const scrollLeft = canvasRef.current.scrollLeft;
+      const scrollTop = canvasRef.current.scrollTop;
+      setLivePointerPos({
+        x: (e.touches[0].clientX - rect.left + scrollLeft) / zoom,
+        y: (e.touches[0].clientY - rect.top + scrollTop) / zoom
+      });
+    }
   };
 
   const handleMouseUp = () => {
     setDraggingNodeId(null);
+    if (isDraggingWire) {
+      setIsDraggingWire(false);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setDraggingNodeId(null);
+    if (isDraggingWire) {
+      setIsDraggingWire(false);
+    }
+  };
+
+  // Connecting Logic: Start connecting from an output handle
+  const handleStartConnect = (nodeId: string, optionIndex?: number) => {
+    if (connectingSource && connectingSource.nodeId === nodeId && connectingSource.optionIndex === optionIndex) {
+      // Toggle off if clicking the same handle
+      setConnectingSource(null);
+      setIsDraggingWire(false);
+      setLivePointerPos(null);
+    } else {
+      setConnectingSource({ nodeId, optionIndex });
+      setSelectedBlockId(nodeId);
+    }
+  };
+
+  const handleStartDragWire = (nodeId: string, optionIndex?: number, clientX?: number, clientY?: number) => {
+    setConnectingSource({ nodeId, optionIndex });
+    setIsDraggingWire(true);
+    setSelectedBlockId(nodeId);
+    if (clientX !== undefined && clientY !== undefined && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const scrollLeft = canvasRef.current.scrollLeft;
+      const scrollTop = canvasRef.current.scrollTop;
+      setLivePointerPos({
+        x: (clientX - rect.left + scrollLeft) / zoom,
+        y: (clientY - rect.top + scrollTop) / zoom
+      });
+    }
+  };
+
+  // Complete connection to a target node (Click-to-Connect or Drag-to-Connect)
+  const handleConnectToTarget = (targetNodeId: string) => {
+    if (!connectingSource) return;
+    if (connectingSource.nodeId === targetNodeId) {
+      setConnectingSource(null);
+      setIsDraggingWire(false);
+      setLivePointerPos(null);
+      return;
+    }
+
+    // Filter out duplicate connection from the same handle
+    const filtered = flow.connections.filter(
+      c => !(c.fromNodeId === connectingSource.nodeId && c.fromOptionIndex === connectingSource.optionIndex && c.toNodeId === targetNodeId)
+    );
+
+    const newConn: VisualConnection = {
+      id: `c_${Date.now()}`,
+      fromNodeId: connectingSource.nodeId,
+      fromOptionIndex: connectingSource.optionIndex,
+      toNodeId: targetNodeId
+    };
+
+    setFlow(prev => ({
+      ...prev,
+      connections: [...filtered, newConn]
+    }));
+
+    setConnectingSource(null);
+    setIsDraggingWire(false);
+    setLivePointerPos(null);
   };
 
   return (
@@ -409,11 +535,35 @@ export const VisualBranchBuilder: React.FC = () => {
         <div 
           ref={canvasRef}
           className="flex-1 h-full relative overflow-auto cursor-grab active:cursor-grabbing bg-slate-950"
+          onPointerMove={handleMouseMove}
+          onTouchMove={handleTouchMove}
+          onPointerUp={handleMouseUp}
+          onTouchEnd={handleTouchEnd}
           style={{
             backgroundImage: `radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px)`,
             backgroundSize: '24px 24px'
           }}
         >
+          {/* Active Connecting Status Banner */}
+          {connectingSource && (
+            <div className="sticky top-3 mx-auto z-40 w-fit bg-slate-900/95 backdrop-blur-md border border-amber-500/70 shadow-[0_0_24px_rgba(245,158,11,0.35)] text-amber-200 px-4 py-2 rounded-2xl flex items-center gap-3 animate-pulse">
+              <div className="flex items-center gap-2 font-bold text-xs">
+                <span className="text-base">🔌</span>
+                <span>מצב חיבור ענף פעיל: לחץ על נקודת היעד הכתומה של הבלוק הבא</span>
+              </div>
+              <button
+                onClick={() => {
+                  setConnectingSource(null);
+                  setIsDraggingWire(false);
+                  setLivePointerPos(null);
+                }}
+                className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 rounded-lg text-xs font-semibold border border-amber-500/40 active:scale-95 transition-all"
+              >
+                ביטול
+              </button>
+            </div>
+          )}
+
           {/* SVG Connection Lines Layer (Bezier curves) */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ minWidth: '1600px', minHeight: '1200px' }}>
             <defs>
@@ -423,29 +573,48 @@ export const VisualBranchBuilder: React.FC = () => {
               </linearGradient>
             </defs>
 
+            {/* Established Connections */}
             {flow.connections.map((conn) => {
               const fromNode = flow.nodes.find(n => n.id === conn.fromNodeId);
               const toNode = flow.nodes.find(n => n.id === conn.toNodeId);
               if (!fromNode || !toNode) return null;
 
-              // Compute anchor coordinates
-              const x1 = (fromNode.position.x + 240) * zoom;
-              const y1 = (fromNode.position.y + 60 + (conn.fromOptionIndex !== undefined ? conn.fromOptionIndex * 24 : 0)) * zoom;
+              // Compute anchor coordinates (Output port is on the right side of fromNode, input on left side of toNode)
+              const x1 = (fromNode.position.x + 256) * zoom;
+              const y1 = (fromNode.position.y + (conn.fromOptionIndex !== undefined ? (106 + conn.fromOptionIndex * 30) : 56)) * zoom;
               const x2 = toNode.position.x * zoom;
-              const y2 = (toNode.position.y + 60) * zoom;
+              const y2 = (toNode.position.y + 56) * zoom;
 
               const dx = Math.abs(x2 - x1) * 0.5;
               const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
 
               return (
-                <g key={conn.id}>
+                <g 
+                  key={conn.id}
+                  className="group/conn cursor-pointer pointer-events-auto"
+                >
+                  {/* Invisible thicker hit-path for easy hover and clicking */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth="16"
+                    onClick={() => {
+                      setFlow(prev => ({
+                        ...prev,
+                        connections: prev.connections.filter(c => c.id !== conn.id)
+                      }));
+                    }}
+                  />
                   {/* Glowing shadow curve */}
                   <path
                     d={pathD}
                     fill="none"
                     stroke="#f97316"
                     strokeWidth="4"
-                    strokeOpacity="0.2"
+                    strokeOpacity="0.25"
                   />
                   {/* Main Bezier Line */}
                   <path
@@ -456,10 +625,68 @@ export const VisualBranchBuilder: React.FC = () => {
                     strokeDasharray="4 2"
                   />
                   {/* Arrow Head circle */}
-                  <circle cx={x2} cy={y2} r="4" fill="#22c55e" />
+                  <circle cx={x2} cy={y2} r="5" fill="#22c55e" className="shadow" />
+                  
+                  {/* Hover Delete Button on line center */}
+                  <g 
+                    className="opacity-0 group-hover/conn:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFlow(prev => ({
+                        ...prev,
+                        connections: prev.connections.filter(c => c.id !== conn.id)
+                      }));
+                    }}
+                  >
+                    <circle cx={midX} cy={midY} r="10" fill="#ef4444" className="shadow-md" />
+                    <text 
+                      x={midX} 
+                      y={midY + 3.5} 
+                      fill="white" 
+                      fontSize="11" 
+                      textAnchor="middle" 
+                      fontWeight="bold"
+                    >
+                      ×
+                    </text>
+                  </g>
                 </g>
               );
             })}
+
+            {/* Dynamic live dragged wire following pointer */}
+            {connectingSource && livePointerPos && (() => {
+              const fromNode = flow.nodes.find(n => n.id === connectingSource.nodeId);
+              if (!fromNode) return null;
+              const x1 = (fromNode.position.x + 256) * zoom;
+              const y1 = (fromNode.position.y + (connectingSource.optionIndex !== undefined ? (106 + connectingSource.optionIndex * 30) : 56)) * zoom;
+              const x2 = livePointerPos.x * zoom;
+              const y2 = livePointerPos.y * zoom;
+              const dx = Math.abs(x2 - x1) * 0.5;
+              const liveD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+              return (
+                <g className="pointer-events-none">
+                  <path
+                    d={liveD}
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="6"
+                    strokeOpacity="0.3"
+                    className="animate-pulse"
+                  />
+                  <path
+                    d={liveD}
+                    fill="none"
+                    stroke="#34d399"
+                    strokeWidth="3"
+                    strokeDasharray="6 3"
+                  />
+                  <circle cx={x2} cy={y2} r="6" fill="#f59e0b" className="animate-ping" />
+                  <circle cx={x2} cy={y2} r="5" fill="#f59e0b" />
+                </g>
+              );
+            })()}
           </svg>
 
           {/* Node Blocks Elements */}
@@ -476,19 +703,32 @@ export const VisualBranchBuilder: React.FC = () => {
               const tmpl = BLOCK_TEMPLATES.find(t => t.type === node.type) || BLOCK_TEMPLATES[0];
               const Icon = tmpl.icon;
               const isSelected = selectedBlockId === node.id;
+              const isTargetCandidate = Boolean(connectingSource && connectingSource.nodeId !== node.id);
+              const isNodeActive = Boolean(connectingSource && connectingSource.nodeId === node.id && connectingSource.optionIndex === undefined);
 
               return (
                 <div
                   key={node.id}
                   onMouseDown={(e) => handleMouseDown(e, node.id)}
+                  onTouchStart={(e) => handleTouchStart(e, node.id)}
+                  onClick={(e) => {
+                    if (isTargetCandidate) {
+                      e.stopPropagation();
+                      handleConnectToTarget(node.id);
+                    } else {
+                      setSelectedBlockId(node.id);
+                    }
+                  }}
                   style={{
                     left: `${node.position.x}px`,
                     top: `${node.position.y}px`
                   }}
-                  className={`absolute w-64 rounded-2xl bg-slate-900/95 border transition-shadow cursor-pointer z-10 shadow-lg ${
+                  className={`absolute w-64 rounded-2xl bg-slate-900/95 border transition-all cursor-pointer z-10 shadow-lg ${
                     isSelected 
                       ? 'border-amber-500 shadow-amber-500/20 shadow-xl ring-2 ring-amber-500/30' 
-                      : 'border-slate-800 hover:border-slate-700'
+                      : isTargetCandidate
+                        ? 'border-amber-400/80 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-2 ring-amber-400/40'
+                        : 'border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   {/* Node Header */}
@@ -515,26 +755,145 @@ export const VisualBranchBuilder: React.FC = () => {
                       {node.text}
                     </div>
 
-                    {/* Options list if menu/condition */}
+                    {/* Options list if menu/condition with individual interactive ports */}
                     {node.options && node.options.length > 0 && (
-                      <div className="pt-2 border-t border-slate-800 space-y-1">
-                        {node.options.map((opt, i) => (
-                          <div 
-                            key={i} 
-                            className="bg-slate-950 px-2 py-1 rounded-lg text-[10px] text-slate-300 border border-slate-800 flex items-center justify-between font-medium"
-                          >
-                            <span className="truncate">{opt}</span>
-                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                          </div>
-                        ))}
+                      <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                        {node.options.map((opt, i) => {
+                          const isOptionActive = connectingSource?.nodeId === node.id && connectingSource?.optionIndex === i;
+                          return (
+                            <div 
+                              key={i} 
+                              className="relative group/opt bg-slate-950 px-2.5 py-1.5 rounded-xl text-[11px] text-slate-200 border border-slate-800 flex items-center justify-between font-medium hover:border-emerald-500/40 transition-colors"
+                            >
+                              <span className="truncate pr-1">{opt}</span>
+
+                              {/* Option Output Port (32x32px hitbox, pulsing glow, hover emoji 🔌) */}
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartConnect(node.id, i);
+                                }}
+                                onPointerDown={(e) => {
+                                  e.stopPropagation();
+                                  handleStartConnect(node.id, i);
+                                  handleStartDragWire(node.id, i, e.clientX, e.clientY);
+                                }}
+                                onTouchStart={(e) => {
+                                  e.stopPropagation();
+                                  handleStartConnect(node.id, i);
+                                  if (e.touches[0]) {
+                                    handleStartDragWire(node.id, i, e.touches[0].clientX, e.touches[0].clientY);
+                                  }
+                                }}
+                                className="group/port relative -mr-1 w-8 h-8 min-w-[32px] min-h-[32px] flex items-center justify-center cursor-crosshair touch-none shrink-0"
+                                title="לחץ או גרור לחיבור ענף"
+                              >
+                                <div 
+                                  className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-200 select-none ${
+                                    isOptionActive
+                                      ? 'w-4 h-4 bg-emerald-400 ring-4 ring-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.9)] scale-125'
+                                      : 'bg-emerald-500 ring-2 ring-emerald-400/60 shadow-[0_0_12px_rgba(52,211,153,0.5)] animate-pulse group-hover/port:scale-125 group-hover/port:ring-4 group-hover/port:ring-emerald-300'
+                                  }`}
+                                >
+                                  <span className="text-[8px] leading-none opacity-0 group-hover/port:opacity-100 transition-opacity">
+                                    🔌
+                                  </span>
+                                </div>
+
+                                {/* Tooltip */}
+                                <div className="pointer-events-none absolute right-full mr-2 px-2 py-0.5 bg-slate-900/95 text-emerald-300 text-[10px] font-semibold rounded-lg border border-emerald-500/40 shadow-xl opacity-0 group-hover/port:opacity-100 transition-all duration-200 whitespace-nowrap z-50 flex items-center gap-1">
+                                  <span>🔌</span>
+                                  <span>לחץ או גרור לחיבור ענף</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
 
-                  {/* Output Connection Anchor */}
-                  <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-orange-500 border-2 border-slate-900 shadow"></div>
-                  {/* Input Connection Anchor */}
-                  <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-emerald-500 border-2 border-slate-900 shadow"></div>
+                  {/* Target / Input Connection Handle on Left (Orange, pulsing when waiting for target) */}
+                  <div 
+                    onClick={(e) => {
+                      if (isTargetCandidate) {
+                        e.stopPropagation();
+                        handleConnectToTarget(node.id);
+                      }
+                    }}
+                    onPointerUp={(e) => {
+                      if (isTargetCandidate) {
+                        e.stopPropagation();
+                        handleConnectToTarget(node.id);
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      if (isTargetCandidate) {
+                        e.stopPropagation();
+                        handleConnectToTarget(node.id);
+                      }
+                    }}
+                    className="group/target absolute -left-4 top-14 -translate-y-1/2 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center cursor-crosshair z-30 touch-none"
+                    title={isTargetCandidate ? "🎯 לחץ כאן לחיבור כיעד" : "נקודת יעד כניסה"}
+                  >
+                    <div 
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-200 ${
+                        isTargetCandidate
+                          ? 'w-5 h-5 bg-amber-400 border-2 border-amber-200 ring-2 ring-amber-400/80 shadow-[0_0_14px_rgba(245,158,11,0.6)] animate-pulse scale-125'
+                          : 'bg-amber-500 border-2 border-slate-900 shadow group-hover/target:scale-110'
+                      }`}
+                    >
+                      <span className={`text-[9px] leading-none ${isTargetCandidate ? 'opacity-100' : 'opacity-0 group-hover/target:opacity-100'} transition-opacity`}>
+                        🎯
+                      </span>
+                    </div>
+
+                    {/* Tooltip */}
+                    <div className="pointer-events-none absolute left-full ml-2 px-2.5 py-1 bg-slate-900/95 text-amber-300 text-[11px] font-semibold rounded-lg border border-amber-500/40 shadow-xl opacity-0 group-hover/target:opacity-100 transition-all duration-200 whitespace-nowrap z-50 flex items-center gap-1">
+                      <span>🎯</span>
+                      <span>{isTargetCandidate ? "לחץ כאן לחיבור כיעד" : "נקודת יעד כניסה"}</span>
+                    </div>
+                  </div>
+
+                  {/* Output Connection Handle on Right (Green, pulsing with hover emoji 🔌 and tooltip) */}
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartConnect(node.id);
+                    }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      handleStartConnect(node.id);
+                      handleStartDragWire(node.id, undefined, e.clientX, e.clientY);
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      handleStartConnect(node.id);
+                      if (e.touches[0]) {
+                        handleStartDragWire(node.id, undefined, e.touches[0].clientX, e.touches[0].clientY);
+                      }
+                    }}
+                    className="group/port absolute -right-4 top-14 -translate-y-1/2 w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center cursor-crosshair z-30 touch-none"
+                    title="לחץ או גרור לחיבור ענף"
+                  >
+                    <div 
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-200 select-none ${
+                        isNodeActive
+                          ? 'w-5 h-5 bg-emerald-400 ring-4 ring-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.9)] scale-125'
+                          : 'bg-emerald-500 ring-2 ring-emerald-400/60 shadow-[0_0_12px_rgba(52,211,153,0.5)] animate-pulse group-hover/port:scale-125 group-hover/port:ring-4 group-hover/port:ring-emerald-300'
+                      }`}
+                    >
+                      <span className="text-[9px] leading-none opacity-0 group-hover/port:opacity-100 transition-opacity">
+                        🔌
+                      </span>
+                    </div>
+
+                    {/* Tooltip Popup */}
+                    <div className="pointer-events-none absolute right-full mr-2 px-2.5 py-1 bg-slate-900/95 text-emerald-300 text-[11px] font-semibold rounded-lg border border-emerald-500/40 shadow-xl opacity-0 group-hover/port:opacity-100 transition-all duration-200 whitespace-nowrap z-50 flex items-center gap-1">
+                      <span>🔌</span>
+                      <span>לחץ או גרור לחיבור ענף</span>
+                    </div>
+                  </div>
                 </div>
               );
             })}

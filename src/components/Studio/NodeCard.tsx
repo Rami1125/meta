@@ -29,6 +29,8 @@ interface NodeCardProps {
   onSelect: (node: StudioNode) => void;
   onDelete: (id: string) => void;
   onStartConnect?: (nodeId: string, handleId?: string) => void;
+  connectingSource?: { nodeId: string; handleId?: string } | null;
+  onSelectTarget?: (targetNodeId: string) => void;
 }
 
 export const NodeCard: React.FC<NodeCardProps> = ({
@@ -36,8 +38,11 @@ export const NodeCard: React.FC<NodeCardProps> = ({
   isSelected,
   onSelect,
   onDelete,
-  onStartConnect
+  onStartConnect,
+  connectingSource,
+  onSelectTarget
 }) => {
+  const isTargetCandidate = Boolean(connectingSource && connectingSource.nodeId !== node.id);
   const getHeaderMeta = () => {
     switch (node.type) {
       case 'list_menu':
@@ -116,10 +121,38 @@ export const NodeCard: React.FC<NodeCardProps> = ({
     >
       {/* Input connector handle on right (for RTL canvas incoming connection) */}
       <div 
-        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-slate-800 border-2 border-slate-400 group-hover:border-orange-400 flex items-center justify-center shadow-md transition-colors z-10"
-        title="חיבור נכנס"
+        onClick={(e) => {
+          if (isTargetCandidate && onSelectTarget) {
+            e.stopPropagation();
+            onSelectTarget(node.id);
+          }
+        }}
+        onPointerUp={(e) => {
+          if (isTargetCandidate && onSelectTarget) {
+            e.stopPropagation();
+            onSelectTarget(node.id);
+          }
+        }}
+        onTouchEnd={(e) => {
+          if (isTargetCandidate && onSelectTarget) {
+            e.stopPropagation();
+            onSelectTarget(node.id);
+          }
+        }}
+        className={`group/target absolute -right-4 top-1/2 -translate-y-1/2 w-9 h-9 min-w-[36px] min-h-[36px] rounded-full flex items-center justify-center transition-all z-20 cursor-crosshair touch-none ${
+          isTargetCandidate
+            ? 'bg-amber-500 border-2 border-amber-300 ring-2 ring-amber-400/80 shadow-[0_0_14px_rgba(245,158,11,0.6)] animate-pulse scale-125'
+            : 'bg-slate-800 border-2 border-slate-500 hover:border-amber-400'
+        }`}
+        title={isTargetCandidate ? "🎯 לחץ כאן לחיבור כיעד" : "חיבור נכנס"}
       >
-        <span className="w-2.5 h-2.5 rounded-full bg-slate-400 group-hover:bg-orange-400"></span>
+        <span className={`text-[10px] leading-none ${isTargetCandidate ? 'opacity-100' : 'opacity-0 group-hover/target:opacity-100'}`}>
+          🎯
+        </span>
+        {/* Tooltip */}
+        <div className="pointer-events-none absolute right-full mr-1 px-2 py-0.5 bg-slate-950 text-amber-300 text-[10px] font-semibold rounded-lg border border-amber-500/40 shadow-xl opacity-0 group-hover/target:opacity-100 transition-opacity whitespace-nowrap z-30">
+          {isTargetCandidate ? "לחץ כאן לחיבור כיעד" : "נקודת יעד כניסה"}
+        </div>
       </div>
 
       {/* Header */}
@@ -217,16 +250,31 @@ export const NodeCard: React.FC<NodeCardProps> = ({
                         ללא יעד
                       </span>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onStartConnect) onStartConnect(node.id, row.id);
-                      }}
-                      className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-emerald-600/30 hover:bg-emerald-500 text-emerald-300 hover:text-white flex items-center justify-center transition-all active:scale-90 shadow-sm"
-                      title="חבר ענף זה לבלוק יעד"
-                    >
-                      <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-                    </button>
+                    <div className="relative group/handle flex items-center justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onStartConnect) onStartConnect(node.id, row.id);
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          if (onStartConnect) onStartConnect(node.id, row.id);
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (onStartConnect) onStartConnect(node.id, row.id);
+                        }}
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-emerald-600/30 hover:bg-emerald-500 text-emerald-300 hover:text-white ring-2 ring-emerald-400/60 shadow-[0_0_12px_rgba(52,211,153,0.5)] animate-pulse flex items-center justify-center transition-all active:scale-90 cursor-crosshair group-hover/handle:ring-4 group-hover/handle:ring-emerald-300"
+                        title="לחץ או גרור לחיבור ענף"
+                      >
+                        <span className="text-sm group-hover/handle:scale-125 transition-transform">🔌</span>
+                      </button>
+                      {/* Tooltip */}
+                      <div className="pointer-events-none absolute bottom-full mb-1.5 px-2.5 py-1 bg-slate-950/95 text-emerald-300 text-[10px] font-semibold rounded-lg border border-emerald-500/40 shadow-xl opacity-0 group-hover/handle:opacity-100 transition-opacity whitespace-nowrap z-30 flex items-center gap-1">
+                        <span>🔌</span>
+                        <span>לחץ או גרור לחיבור ענף</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -312,16 +360,31 @@ export const NodeCard: React.FC<NodeCardProps> = ({
               ) : (
                 <span className="text-slate-500">סוף ענף</span>
               )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onStartConnect) onStartConnect(node.id);
-                }}
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-slate-800 hover:bg-orange-500 text-slate-300 hover:text-white flex items-center justify-center transition-all active:scale-90 shadow-sm"
-                title="חבר בלוק זה לשלב הבא"
-              >
-                <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-              </button>
+              <div className="relative group/handle flex items-center justify-center">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onStartConnect) onStartConnect(node.id);
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    if (onStartConnect) onStartConnect(node.id);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (onStartConnect) onStartConnect(node.id);
+                  }}
+                  className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-emerald-600/30 hover:bg-emerald-500 text-emerald-300 hover:text-white ring-2 ring-emerald-400/60 shadow-[0_0_12px_rgba(52,211,153,0.5)] animate-pulse flex items-center justify-center transition-all active:scale-90 cursor-crosshair group-hover/handle:ring-4 group-hover/handle:ring-emerald-300"
+                  title="לחץ או גרור לחיבור ענף"
+                >
+                  <span className="text-sm group-hover/handle:scale-125 transition-transform">🔌</span>
+                </button>
+                {/* Tooltip */}
+                <div className="pointer-events-none absolute bottom-full mb-1.5 px-2.5 py-1 bg-slate-950/95 text-emerald-300 text-[10px] font-semibold rounded-lg border border-emerald-500/40 shadow-xl opacity-0 group-hover/handle:opacity-100 transition-opacity whitespace-nowrap z-30 flex items-center gap-1">
+                  <span>🔌</span>
+                  <span>לחץ או גרור לחיבור ענף</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
