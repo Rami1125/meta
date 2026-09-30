@@ -18,6 +18,7 @@ import {
   StudioTask, 
   StudioNode, 
   ListMenuData,
+  ListMenuRow,
   JoniWebhookPayload
 } from './src/types/studio.ts';
 
@@ -219,55 +220,79 @@ async function processIncomingMessage(payload: JoniWebhookPayload, channel: 'jon
   let targetNode: StudioNode | undefined;
   let selectedMenuTitle: string | undefined;
 
-  // 1. Check if user selected a list menu row
+  // 1. Dynamic check if user selected a list menu row
   if (selectedRowId) {
     console.log("MENU SELECTED:", selectedRowId);
 
-    if (selectedRowId === 'order_delivery' || selectedRowId === 'delivery') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'delivery_reply');
-      selectedMenuTitle = '🚚 הזמנה והובלה';
-    } else if (selectedRowId === 'self_pickup' || selectedRowId === 'pickup') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
-      selectedMenuTitle = '🏪 איסוף עצמי';
-    } else if (selectedRowId === 'waste_container' || selectedRowId === 'containers') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
-      selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
-    } else if (selectedRowId === 'container_place_new' || selectedRowId === 'container_swap' || selectedRowId === 'container_remove') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
-      selectedMenuTitle = '📦 בחירת נפח המכולה';
-    } else if (selectedRowId === 'container_size_6' || selectedRowId === 'container_size_8' || selectedRowId === 'container_size_12') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
-      selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
-    } else if (selectedRowId === 'track_order' || selectedRowId === 'tracking') {
-      targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
-      selectedMenuTitle = '📍 מעקב משלוח';
-    }
-
-    // Find edge or row matching selectedRowId
-    if (!targetNode) {
-      const rootNode = activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId);
-      if (rootNode && rootNode.data.type === 'list_menu') {
-        const matchingRow = rootNode.data.rows.find(r => r.id === selectedRowId);
-        if (matchingRow) {
-          selectedMenuTitle = matchingRow.title;
-          const targetId = matchingRow.targetBlockId;
-          if (targetId) {
-            targetNode = activeFlow.nodes.find(n => n.id === targetId);
+    // 1A. Search across all list_menu nodes in activeFlow for matching row
+    for (const node of activeFlow.nodes) {
+      if (node.data && node.data.type === 'list_menu' && Array.isArray((node.data as ListMenuData).rows)) {
+        const foundRow = (node.data as ListMenuData).rows.find(r => 
+          r.id === selectedRowId || 
+          r.title === selectedRowId ||
+          selectedRowId.includes(r.id) ||
+          r.id.includes(selectedRowId)
+        );
+        if (foundRow) {
+          selectedMenuTitle = foundRow.title;
+          if (foundRow.targetBlockId) {
+            targetNode = activeFlow.nodes.find(n => n.id === foundRow.targetBlockId);
           }
+          break;
         }
       }
     }
 
-    // Also search edges directly
+    // 1B. Direct node match by id
+    if (!targetNode) {
+      targetNode = activeFlow.nodes.find(n => n.id === selectedRowId);
+    }
+
+    // 1C. Search edges directly
     if (!targetNode) {
       const edge = activeFlow.edges.find(e => e.sourceHandle === selectedRowId || e.source === selectedRowId);
       if (edge) {
         targetNode = activeFlow.nodes.find(n => n.id === edge.target);
       }
     }
+
+    // 1D. Search visual chat flow connections & nodes
+    if (!targetNode && visualChatFlow && Array.isArray(visualChatFlow.connections)) {
+      const conn = visualChatFlow.connections.find((c: any) => 
+        c.fromNodeId === selectedRowId || 
+        c.toNodeId === selectedRowId ||
+        `opt_${c.fromOptionIndex}` === selectedRowId
+      );
+      if (conn) {
+        targetNode = activeFlow.nodes.find(n => n.id === conn.toNodeId);
+      }
+    }
+
+    // 1E. Standard Aliases fallback for Saban core actions
+    if (!targetNode) {
+      if (selectedRowId === 'order_delivery' || selectedRowId === 'delivery') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'delivery_reply');
+        selectedMenuTitle = '🚚 הזמנה והובלה';
+      } else if (selectedRowId === 'self_pickup' || selectedRowId === 'pickup') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
+        selectedMenuTitle = '🏪 איסוף עצמי';
+      } else if (selectedRowId === 'waste_container' || selectedRowId === 'containers') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
+        selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
+      } else if (selectedRowId === 'container_place_new' || selectedRowId === 'container_swap' || selectedRowId === 'container_remove') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
+        selectedMenuTitle = '📦 בחירת נפח המכולה';
+      } else if (selectedRowId === 'container_size_6' || selectedRowId === 'container_size_8' || selectedRowId === 'container_size_12') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
+        selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
+      } else if (selectedRowId === 'track_order' || selectedRowId === 'tracking') {
+        targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
+        selectedMenuTitle = '📍 מעקב משלוח';
+      }
+    }
   }
 
-  // 2. Check if text matches numbered options or greetings
+  // 2. Check if text matches numbered options, greetings, or dynamic menu options
   if (!targetNode) {
     const lower = incomingText.toLowerCase();
     const isGreeting = isNew || 
@@ -279,30 +304,61 @@ async function processIncomingMessage(payload: JoniWebhookPayload, channel: 'jon
       lower.includes('menu') ||
       incomingText === '';
 
+    const rootNode = activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId || n.isRoot) || activeFlow.nodes[0];
+
     if (isGreeting) {
-      targetNode = activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId);
-    } else if (lower.includes('הצבה') || lower.includes('החלפה') || lower.includes('פינוי')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
-      selectedMenuTitle = '📦 בחירת נפח המכולה';
-    } else if (lower.includes('6 קוב') || lower.includes('8 קוב') || lower.includes('12 קוב')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
-      selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
-    } else if (lower.includes('1') || lower.includes('הובלה') || lower.includes('משאית') || lower.includes('בלוק')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'delivery_reply');
-      selectedMenuTitle = '🚚 הזמנת הובלה לאתר';
-    } else if (lower.includes('2') || lower.includes('איסוף') || lower.includes('סניף') || lower.includes('החרש')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
-      selectedMenuTitle = '🏪 איסוף עצמי מסניף';
-    } else if (lower.includes('3') || lower.includes('מכולה') || lower.includes('פסולת')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
-      selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
-    } else if (lower.includes('4') || lower.includes('מעקב') || lower.includes('סטטוס') || lower.includes('הזמנה')) {
-      targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
-      selectedMenuTitle = '📍 מעקב אחרי הזמנה';
-    } else {
-      // Default fallback: search for AI assistant node or welcome menu
-      targetNode = activeFlow.nodes.find(n => n.type === 'ai_question') || 
-                   activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId);
+      targetNode = rootNode;
+    } else if (rootNode && rootNode.data.type === 'list_menu' && Array.isArray((rootNode.data as ListMenuData).rows)) {
+      const rows = (rootNode.data as ListMenuData).rows;
+
+      // Check numeric choice like "1", "2", "3", "אפשרות 1"
+      const numMatch = incomingText.match(/\b([1-9])\b/);
+      if (numMatch) {
+        const idx = parseInt(numMatch[1], 10) - 1;
+        if (rows[idx]) {
+          selectedMenuTitle = rows[idx].title;
+          targetNode = activeFlow.nodes.find(n => n.id === rows[idx].targetBlockId);
+        }
+      }
+
+      // Check if text matches any row's title
+      if (!targetNode) {
+        for (const row of rows) {
+          const rowClean = row.title.replace(/[^\u0590-\u05FFa-zA-Z0-9]/g, ' ').trim().toLowerCase();
+          const words = rowClean.split(/\s+/).filter(w => w.length > 2);
+          if (lower.includes(row.title.toLowerCase()) || words.some(w => lower.includes(w))) {
+            selectedMenuTitle = row.title;
+            targetNode = activeFlow.nodes.find(n => n.id === row.targetBlockId);
+            break;
+          }
+        }
+      }
+    }
+
+    // Secondary keywords matching if not resolved by root rows
+    if (!targetNode) {
+      if (lower.includes('הצבה') || lower.includes('החלפה') || lower.includes('פינוי')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_size_menu');
+        selectedMenuTitle = '📦 בחירת נפח המכולה';
+      } else if (lower.includes('6 קוב') || lower.includes('8 קוב') || lower.includes('12 קוב')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_site_details');
+        selectedMenuTitle = '📍 איסוף פרטי אתר מכולה';
+      } else if (lower.includes('הובלה') || lower.includes('משאית') || lower.includes('בלוק')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'delivery_reply');
+        selectedMenuTitle = '🚚 הזמנת הובלה לאתר';
+      } else if (lower.includes('איסוף') || lower.includes('סניף') || lower.includes('החרש')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'pickup_reply');
+        selectedMenuTitle = '🏪 איסוף עצמי מסניף';
+      } else if (lower.includes('מכולה') || lower.includes('פסולת')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'container_action_menu') || activeFlow.nodes.find(n => n.id === 'containers_reply');
+        selectedMenuTitle = '🗑️ שירות מכולות פסולת - ח. סבן';
+      } else if (lower.includes('מעקב') || lower.includes('סטטוס')) {
+        targetNode = activeFlow.nodes.find(n => n.id === 'tracking_reply');
+        selectedMenuTitle = '📍 מעקב אחרי הזמנה';
+      } else {
+        // Fallback: search for AI assistant node or welcome menu
+        targetNode = activeFlow.nodes.find(n => n.type === 'ai_question') || rootNode;
+      }
     }
   }
 
@@ -494,12 +550,19 @@ app.get('/api/flow', (_req: Request, res: Response) => {
   res.json({ success: true, flow: activeFlow });
 });
 
-app.post('/api/flow', (req: Request, res: Response) => {
+app.post('/api/flow', async (req: Request, res: Response) => {
   if (req.body && req.body.nodes) {
     activeFlow = {
       ...req.body,
       updatedAt: new Date().toISOString()
     };
+    // Sync to Firebase RTDB for online live listeners
+    await fetch(`${FB_ROOT}/flows/active.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(activeFlow)
+    }).catch(() => {});
+
     return res.json({ success: true, flow: activeFlow, message: 'עץ התפריט נשמר בהצלחה!' });
   }
   res.status(400).json({ success: false, error: 'Invalid flow payload' });
@@ -1418,6 +1481,123 @@ app.get('/api/chat/suggest', (_req: Request, res: Response) => {
   });
 });
 
+// Helper: Synchronize Visual Chat Flow into Active Flow
+function syncVisualFlowToActiveFlow(vFlow: any) {
+  if (!vFlow || !vFlow.nodes || !Array.isArray(vFlow.nodes)) return;
+
+  try {
+    const menuBlock = vFlow.nodes.find((n: any) => n.type === 'menu' && (n.id === 'node_welcome' || (n.title && (n.title.includes('ראשי') || n.title.includes('תפריט'))))) ||
+                      vFlow.nodes.find((n: any) => n.type === 'menu') ||
+                      vFlow.nodes[0];
+
+    if (menuBlock && Array.isArray(menuBlock.options)) {
+      let rootNode = activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId || n.isRoot);
+      if (!rootNode) {
+        rootNode = activeFlow.nodes.find(n => n.id === 'welcome_menu');
+      }
+
+      const rows: ListMenuRow[] = menuBlock.options.map((optText: string, idx: number) => {
+        const conn = Array.isArray(vFlow.connections) 
+          ? vFlow.connections.find((c: any) => c.fromNodeId === menuBlock.id && (c.fromOptionIndex === idx || c.fromOptionIndex === undefined))
+          : undefined;
+
+        const targetNodeId = conn ? conn.toNodeId : undefined;
+        const targetBlock = targetNodeId ? vFlow.nodes.find((b: any) => b.id === targetNodeId) : undefined;
+
+        let rowId = targetNodeId || `opt_${idx}`;
+        if (optText.includes('הובלה') || optText.includes('1')) rowId = 'order_delivery';
+        else if (optText.includes('איסוף') || optText.includes('2')) rowId = 'self_pickup';
+        else if (optText.includes('מכול') || optText.includes('פסולת') || optText.includes('3')) rowId = 'waste_container';
+        else if (optText.includes('מעקב') || optText.includes('4')) rowId = 'track_order';
+
+        let targetBlockId = targetNodeId;
+        if (!targetBlockId) {
+          if (rowId === 'order_delivery') targetBlockId = 'delivery_reply';
+          else if (rowId === 'self_pickup') targetBlockId = 'pickup_reply';
+          else if (rowId === 'waste_container') targetBlockId = 'container_action_menu';
+          else if (rowId === 'track_order') targetBlockId = 'tracking_reply';
+        }
+
+        return {
+          id: rowId,
+          title: optText,
+          description: targetBlock?.text?.slice(0, 60) || targetBlock?.title || 'שירות ח. סבן חומרי בניין',
+          targetBlockId: targetBlockId || `target_${idx}`
+        };
+      });
+
+      if (rootNode) {
+        rootNode.title = menuBlock.title || rootNode.title;
+        rootNode.data = {
+          ...rootNode.data,
+          type: 'list_menu',
+          header: menuBlock.title || 'ח. סבן חומרי בניין 🏗️',
+          body: menuBlock.text || 'שלום וברוכים הבאים לח. סבן חומרי בניין! במה נוכל לעזור היום?',
+          rows: rows
+        } as ListMenuData;
+      }
+
+      // Add or update all individual blocks from vFlow into activeFlow
+      vFlow.nodes.forEach((vb: any) => {
+        if (vb.id === menuBlock.id) return;
+        const existingIndex = activeFlow.nodes.findIndex(n => n.id === vb.id);
+        const mappedNode: StudioNode = {
+          id: vb.id,
+          type: vb.type === 'menu' ? 'list_menu' : vb.type === 'ai' ? 'ai_question' : vb.type === 'agent' ? 'task' : 'text',
+          title: vb.title || 'ענף סבן',
+          position: vb.position || { x: 300, y: 200 },
+          data: vb.type === 'menu' ? {
+            type: 'list_menu',
+            header: vb.title,
+            body: vb.text,
+            buttonText: 'בחר שירות',
+            rows: (vb.options || []).map((o: string, oi: number) => ({
+              id: `${vb.id}_opt_${oi}`,
+              title: o,
+              description: '',
+              targetBlockId: undefined
+            }))
+          } : vb.type === 'ai' ? {
+            type: 'ai_question',
+            systemPrompt: vb.text,
+            contextInfo: 'ח. סבן חומרי בניין',
+            fallbackText: 'נציג סבן יחזור אליך בהקדם',
+            model: 'gemini-3.8-flash'
+          } : vb.type === 'agent' ? {
+            type: 'task',
+            taskTitleTemplate: `${vb.title} - {{from}}`,
+            category: 'general',
+            urgency: 'urgent',
+            assignedTo: 'ראמי מסארווה (050-886-0896)',
+            confirmationMessage: vb.text
+          } : {
+            type: 'text',
+            text: vb.text
+          }
+        };
+
+        if (existingIndex >= 0) {
+          activeFlow.nodes[existingIndex] = {
+            ...activeFlow.nodes[existingIndex],
+            title: mappedNode.title,
+            data: {
+              ...activeFlow.nodes[existingIndex].data,
+              ...mappedNode.data
+            }
+          };
+        } else {
+          activeFlow.nodes.push(mappedNode);
+        }
+      });
+
+      activeFlow.updatedAt = new Date().toISOString();
+      console.log('✅ Synchronized VisualFlow into ActiveFlow. Total nodes:', activeFlow.nodes.length, 'Root rows:', rows.length);
+    }
+  } catch (err) {
+    console.error('Error syncing visual flow to active flow:', err);
+  }
+}
+
 // Visual Chat Flow Storage Endpoints (Firebase /chat_flows/main sync)
 app.get('/api/chat_flows/main', async (_req: Request, res: Response) => {
   try {
@@ -1426,6 +1606,7 @@ app.get('/api/chat_flows/main', async (_req: Request, res: Response) => {
       const data = await fbRes.json();
       if (data && data.nodes && data.nodes.some((n: any) => n.id === 'container_action_menu')) {
         visualChatFlow = data;
+        syncVisualFlowToActiveFlow(visualChatFlow);
       } else {
         // Sync the complete container tree to Firebase
         await fetch(`${FB_ROOT}/chat_flows/main.json`, {
@@ -1450,13 +1631,24 @@ app.post('/api/chat_flows/main', async (req: Request, res: Response) => {
         updatedAt: new Date().toISOString()
       };
 
-      await fetch(`${FB_ROOT}/chat_flows/main.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify(visualChatFlow)
-      });
+      // 1. Sync directly to ActiveFlow so simulator & webhook pick up changes immediately!
+      syncVisualFlowToActiveFlow(visualChatFlow);
+
+      // 2. Persist to Firebase RTDB in both locations
+      await Promise.all([
+        fetch(`${FB_ROOT}/chat_flows/main.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify(visualChatFlow)
+        }).catch(() => {}),
+        fetch(`${FB_ROOT}/flows/active.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify(activeFlow)
+        }).catch(() => {})
+      ]);
     }
-    res.json({ success: true, flow: visualChatFlow });
+    res.json({ success: true, flow: visualChatFlow, activeFlow });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1880,6 +2072,21 @@ app.post('/api/sheets/post', async (req: Request, res: Response) => {
 
 // Dev vs Production Setup with Vite
 async function startServer() {
+  // Initialize flow from Firebase RTDB on server boot
+  try {
+    const fbRes = await fetch(`${FB_ROOT}/chat_flows/main.json`);
+    if (fbRes.ok) {
+      const data = await fbRes.json();
+      if (data && data.nodes && data.nodes.length > 0) {
+        visualChatFlow = data;
+        syncVisualFlowToActiveFlow(visualChatFlow);
+        console.log('⚡ Initialized and synchronized flow from Firebase RTDB');
+      }
+    }
+  } catch (e) {
+    // offline fallback
+  }
+
   const isDev = process.env.NODE_ENV !== 'production';
 
   if (isDev) {

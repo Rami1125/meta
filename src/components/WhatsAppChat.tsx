@@ -83,6 +83,22 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   useEffect(() => {
     console.log("🔍 START LISTENING TO: joni/incoming");
 
+    // Fetch live flow menu options dynamically
+    fetch('/api/flow')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.flow && data.flow.nodes) {
+          const rootNode = data.flow.nodes.find((n: any) => n.id === data.flow.rootBlockId || n.isRoot) || data.flow.nodes[0];
+          if (rootNode && rootNode.data && Array.isArray(rootNode.data.rows)) {
+            const rowTitles = rootNode.data.rows.map((r: any) => r.title);
+            if (rowTitles.length > 0) {
+              setMessages(prev => prev.map(m => m.isMenuCard ? { ...m, options: rowTitles } : m));
+            }
+          }
+        }
+      })
+      .catch(() => {});
+
     const incomingRef = ref(db, 'joni/incoming');
 
     // DEBUG 1: Check if we can read

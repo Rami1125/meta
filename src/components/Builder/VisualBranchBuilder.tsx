@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -17,9 +17,18 @@ import {
   Check,
   Building2,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Smartphone,
+  Wand2
 } from 'lucide-react';
 import { WhatsAppChat } from '../WhatsAppChat';
+import { NoaCanvasCompanion, NoaFlightCommand } from '../Companion/NoaCanvasCompanion';
+import { audioService } from '../../services/audioService';
+
+export interface VisualBranchBuilderProps {
+  onOpenSimulator?: () => void;
+  onSave?: () => void;
+}
 
 export interface VisualBlock {
   id: string;
@@ -207,7 +216,10 @@ const BLOCK_TEMPLATES = [
   }
 ];
 
-export const VisualBranchBuilder: React.FC = () => {
+export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
+  onOpenSimulator,
+  onSave
+}) => {
   const [flow, setFlow] = useState<VisualFlow>(DEFAULT_VISUAL_FLOW);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>('node_welcome');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -215,6 +227,10 @@ export const VisualBranchBuilder: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [zoom, setZoom] = useState(1);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Noa Companion Flight Engine State
+  const [noaCommand, setNoaCommand] = useState<NoaFlightCommand | null>(null);
+  const [activeMagicNodeId, setActiveMagicNodeId] = useState<string | null>(null);
 
   // Dragging state for nodes
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -227,6 +243,107 @@ export const VisualBranchBuilder: React.FC = () => {
   } | null>(null);
   const [livePointerPos, setLivePointerPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingWire, setIsDraggingWire] = useState(false);
+
+  // Helper: Find position of any node for Noa's flight calculations
+  const getNodePosition = useCallback((nodeId: string) => {
+    const node = flow.nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+    return {
+      x: node.position.x,
+      y: node.position.y,
+      width: 256,
+      height: 180
+    };
+  }, [flow.nodes]);
+
+  const handleNoaCommandComplete = useCallback((_cmd: NoaFlightCommand) => {
+    setActiveMagicNodeId(null);
+    setNoaCommand(null);
+  }, []);
+
+  // Quick Action Handler for Noa's AI Assistant Commands
+  const handleNoaQuickAction = useCallback((promptText: string) => {
+    const newId = `node_ai_${Date.now()}`;
+    let newBlock: VisualBlock;
+
+    if (promptText.includes('מחירון') || promptText.includes('חומרי')) {
+      newBlock = {
+        id: newId,
+        type: 'menu',
+        title: '📋 מחירון חומרי בניין סבן',
+        text: 'מחירי מבצע קבלנים לכפר ברא והסביבה 🏗️\n• מלט נשר 50 ק"ג: 29.90 ₪\n• בלוק 20 שחור: 4.80 ₪\n• חול/טיט באלות: 85 ₪',
+        options: ['🚚 הזמן משאית עכשיו', '📞 שיחה עם ראמי'],
+        position: { x: 460 + Math.random() * 40, y: 360 + Math.random() * 40 }
+      };
+    } else if (promptText.includes('מכול')) {
+      newBlock = {
+        id: newId,
+        type: 'question',
+        title: '🗑️ הזמנת מכולה 8 קוב',
+        text: 'אישור מכולה 8 קוב (פסולת כבדה, בלוקים ובטון) 🚛\nאנא שלח כתובת מדויקת בכפר ברא / מרכז להצבה מיידית.',
+        position: { x: 800 + Math.random() * 40, y: 460 + Math.random() * 40 }
+      };
+    } else if (promptText.includes('שעות') || promptText.includes('איסוף')) {
+      newBlock = {
+        id: newId,
+        type: 'message',
+        title: '🏪 שעות פתיחה מחסן כפר ברא',
+        text: 'ח. סבן פתוח בימים א-ה 06:30-17:00, וביום שישי 06:30-13:00 🏗️\nכתובת: כפר ברא (נווט ב-Waze: ח. סבן חומרי בניין)',
+        position: { x: 440 + Math.random() * 40, y: 200 + Math.random() * 40 }
+      };
+    } else if (promptText.includes('הודעת פתיחה')) {
+      const welcome = flow.nodes.find(n => n.id === 'node_welcome');
+      if (welcome) {
+        setFlow(prev => ({
+          ...prev,
+          nodes: prev.nodes.map(n => n.id === 'node_welcome' ? {
+            ...n,
+            text: 'שלום וברוכים הבאים לח. סבן חומרי בניין בע״מ (כפר ברא) 🏗️\nספק חומרי הבניין המוביל באזור! איזה שירות תרצו להזמין היום?'
+          } : n)
+        }));
+        setSelectedBlockId('node_welcome');
+        setActiveMagicNodeId('node_welcome');
+        setNoaCommand({
+          targetNodeId: 'node_welcome',
+          actionType: 'update_node',
+          title: 'תפריט ראשי סבן',
+          message: 'נועה מעדכנת את הודעת הפתיחה 🪄'
+        });
+        return;
+      }
+      newBlock = {
+        id: newId,
+        type: 'menu',
+        title: 'תפריט ראשי מעודכן',
+        text: 'שלום לח. סבן חומרי בניין כפר ברא 🏗️\nאיך נוכל לעזור היום?',
+        options: ['🚚 הזמנה והובלה', '🏪 איסוף עצמי', '🗑️ מכולות פסולת', '📍 מעקב משלוח'],
+        position: { x: 80, y: 160 }
+      };
+    } else {
+      newBlock = {
+        id: newId,
+        type: 'ai',
+        title: `ענף AI: ${promptText.slice(0, 18)}`,
+        text: `מענה חכם מותאם אישית עבור: ${promptText}`,
+        position: { x: 480 + Math.random() * 50, y: 320 + Math.random() * 50 }
+      };
+    }
+
+    setFlow(prev => ({
+      ...prev,
+      nodes: [...prev.nodes, newBlock]
+    }));
+    setSelectedBlockId(newId);
+    setActiveMagicNodeId(newId);
+
+    // Launch Noa's Flight Animation
+    setNoaCommand({
+      targetNodeId: newId,
+      actionType: 'create_node',
+      title: newBlock.title,
+      message: `נועה מייצרת: ${newBlock.title} ✨`
+    });
+  }, [flow.nodes]);
 
   // Load flow on mount
   useEffect(() => {
@@ -251,6 +368,7 @@ export const VisualBranchBuilder: React.FC = () => {
       });
       if (res.ok) {
         setSaveSuccess(true);
+        if (onSave) onSave();
         setTimeout(() => setSaveSuccess(false), 3000);
       }
     } catch (e) {
@@ -267,7 +385,7 @@ export const VisualBranchBuilder: React.FC = () => {
       title: template.defaultTitle,
       text: template.defaultText,
       options: template.defaultOptions ? [...template.defaultOptions] : undefined,
-      position: { x: 300 + Math.random() * 80, y: 150 + Math.random() * 80 }
+      position: { x: 320 + Math.random() * 80, y: 160 + Math.random() * 80 }
     };
 
     setFlow(prev => ({
@@ -275,6 +393,15 @@ export const VisualBranchBuilder: React.FC = () => {
       nodes: [...prev.nodes, newBlock]
     }));
     setSelectedBlockId(newId);
+
+    // Trigger Noa to fly directly to this new block card!
+    setActiveMagicNodeId(newId);
+    setNoaCommand({
+      targetNodeId: newId,
+      actionType: 'create_node',
+      title: template.defaultTitle,
+      message: `נועה מייצרת: ${template.defaultTitle} 🪄`
+    });
   };
 
   const handleDeleteBlock = (nodeId: string) => {
@@ -296,12 +423,21 @@ export const VisualBranchBuilder: React.FC = () => {
 
   const selectedBlock = flow.nodes.find(n => n.id === selectedBlockId);
 
-  const updateSelectedBlock = (updates: Partial<VisualBlock>) => {
+  const updateSelectedBlock = (updates: Partial<VisualBlock>, triggerNoa = false) => {
     if (!selectedBlockId) return;
     setFlow(prev => ({
       ...prev,
       nodes: prev.nodes.map(n => n.id === selectedBlockId ? { ...n, ...updates } : n)
     }));
+
+    if (triggerNoa) {
+      setActiveMagicNodeId(selectedBlockId);
+      setNoaCommand({
+        targetNodeId: selectedBlockId,
+        actionType: 'update_node',
+        message: 'נועה מעדכנת את הכרטיס... 🪄'
+      });
+    }
   };
 
   // Node Dragging Handlers (Mouse & Touch)
@@ -491,6 +627,47 @@ export const VisualBranchBuilder: React.FC = () => {
             </button>
           </div>
 
+          {/* Noa AI Quick Generator Chips */}
+          <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/80 border border-cyan-500/40 rounded-xl px-2.5 py-1 text-xs shadow-inner">
+            <span className="text-cyan-400 font-bold flex items-center gap-1 text-[11px]">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>נועה AI:</span>
+            </span>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף מחירון חומרי בניין')}
+              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
+              title="פקודה לנועה: יצירת ענף מחירון סבן"
+            >
+              + מחירון
+            </button>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף מכולות פסולת 8 קוב')}
+              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
+              title="פקודה לנועה: יצירת ענף מכולת פסולת"
+            >
+              + מכולה
+            </button>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף שעות פתיחה כפר ברא')}
+              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
+              title="פקודה לנועה: שעות פתיחה ומחסן"
+            >
+              + שעות פתיחה
+            </button>
+          </div>
+
+          {/* Simulator Button */}
+          {onOpenSimulator && (
+            <button
+              onClick={onOpenSimulator}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-950/80 hover:bg-emerald-900 active:scale-95 text-emerald-200 text-xs font-semibold rounded-xl border border-emerald-600/60 transition-all shadow-sm"
+              title="פתח סימולטור WhatsApp חי לבדיקת התפריט העדכני"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>סימולטור WhatsApp חי</span>
+            </button>
+          )}
+
           {/* Preview Button */}
           <button
             onClick={() => setIsPreviewOpen(true)}
@@ -581,6 +758,15 @@ export const VisualBranchBuilder: React.FC = () => {
             backgroundSize: '24px 24px'
           }}
         >
+          {/* Noa Canvas Companion (Mascot Maia style) */}
+          <NoaCanvasCompanion
+            command={noaCommand}
+            onCommandComplete={handleNoaCommandComplete}
+            canvasRef={canvasRef}
+            zoom={zoom}
+            getNodePosition={getNodePosition}
+            onQuickAction={handleNoaQuickAction}
+          />
           {/* Active Connecting Status Banner */}
           {connectingSource && (
             <div className="sticky top-3 mx-auto z-40 w-fit bg-slate-900/95 backdrop-blur-md border border-amber-500/70 shadow-[0_0_24px_rgba(245,158,11,0.35)] text-amber-200 px-4 py-2 rounded-2xl flex items-center gap-3 animate-pulse">
@@ -742,10 +928,12 @@ export const VisualBranchBuilder: React.FC = () => {
               const isSelected = selectedBlockId === node.id;
               const isTargetCandidate = Boolean(connectingSource && connectingSource.nodeId !== node.id);
               const isNodeActive = Boolean(connectingSource && connectingSource.nodeId === node.id && connectingSource.optionIndex === undefined);
+              const isNoaTarget = activeMagicNodeId === node.id;
 
               return (
                 <div
                   key={node.id}
+                  id={`node-card-${node.id}`}
                   onMouseDown={(e) => handleMouseDown(e, node.id)}
                   onTouchStart={(e) => handleTouchStart(e, node.id)}
                   onClick={(e) => {
@@ -760,14 +948,23 @@ export const VisualBranchBuilder: React.FC = () => {
                     left: `${node.position.x}px`,
                     top: `${node.position.y}px`
                   }}
-                  className={`absolute w-64 rounded-2xl bg-slate-900/95 border transition-all cursor-pointer z-10 shadow-lg ${
-                    isSelected 
-                      ? 'border-amber-500 shadow-amber-500/20 shadow-xl ring-2 ring-amber-500/30' 
-                      : isTargetCandidate
-                        ? 'border-amber-400/80 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-2 ring-amber-400/40'
-                        : 'border-slate-800 hover:border-slate-700'
+                  className={`absolute w-64 rounded-2xl bg-slate-900/95 border transition-all cursor-pointer shadow-lg ${
+                    isNoaTarget
+                      ? 'border-cyan-400 ring-4 ring-cyan-400 shadow-[0_0_35px_rgba(34,211,238,0.85)] scale-[1.04] z-20'
+                      : isSelected 
+                        ? 'border-amber-500 shadow-amber-500/20 shadow-xl ring-2 ring-amber-500/30 z-10' 
+                        : isTargetCandidate
+                          ? 'border-amber-400/80 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-2 ring-amber-400/40 z-10'
+                          : 'border-slate-800 hover:border-slate-700 z-10'
                   }`}
                 >
+                  {/* Floating Magic Glow Banner when Noa is casting on this card */}
+                  {isNoaTarget && (
+                    <div className="absolute -top-7 right-2 bg-gradient-to-r from-cyan-500 via-sky-500 to-purple-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-xl flex items-center gap-1.5 animate-bounce z-30 border border-cyan-300/60">
+                      <Sparkles className="w-3 h-3 text-amber-300 animate-spin" />
+                      <span>נועה AI מעדכנת ענף... ✨</span>
+                    </div>
+                  )}
                   {/* Node Header */}
                   <div className={`p-2.5 rounded-t-2xl bg-gradient-to-r ${tmpl.color} text-white flex items-center justify-between`}>
                     <div className="flex items-center gap-1.5 font-bold text-xs truncate">
@@ -1017,8 +1214,27 @@ export const VisualBranchBuilder: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Test / Trigger Preview */}
-            <div className="mt-auto pt-4 border-t border-slate-800">
+            {/* Quick Test / Trigger Preview & Noa Action */}
+            <div className="mt-auto pt-4 border-t border-slate-800 space-y-2">
+              <button
+                onClick={() => {
+                  if (selectedBlockId && selectedBlock) {
+                    setActiveMagicNodeId(selectedBlockId);
+                    setNoaCommand({
+                      targetNodeId: selectedBlockId,
+                      actionType: 'update_node',
+                      title: selectedBlock.title,
+                      message: `נועה מרחפת לעדכן את: ${selectedBlock.title} ✨`
+                    });
+                  }
+                }}
+                className="w-full py-2 bg-gradient-to-r from-cyan-600 via-sky-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition-all border border-cyan-400/40"
+                title="שגר את נועה לרחף אל קלף זה ולהרעיף עליו קסם"
+              >
+                <Wand2 className="w-4 h-4 text-cyan-200 animate-pulse" />
+                <span>הפעל את נועה לרחף לקלף זה 🪄</span>
+              </button>
+
               <button
                 onClick={() => setIsPreviewOpen(true)}
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all"

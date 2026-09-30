@@ -178,7 +178,10 @@ export default function App() {
       {/* Main View Area */}
       <main className="flex-1 h-full overflow-hidden flex flex-col relative">
         {activeTab === 'builder' && (
-          <VisualBranchBuilder />
+          <VisualBranchBuilder 
+            onOpenSimulator={() => setIsSimulatorOpen(true)}
+            onSave={refreshData}
+          />
         )}
 
         {activeTab === 'studio' && (

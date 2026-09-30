@@ -23,6 +23,20 @@ export const api = {
     return data.flow;
   },
 
+  async getChatFlow(): Promise<any> {
+    const res = await fetch('/api/chat_flows/main');
+    return res.json();
+  },
+
+  async saveChatFlow(flow: any): Promise<any> {
+    const res = await fetch('/api/chat_flows/main', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(flow)
+    });
+    return res.json();
+  },
+
   // Settings
   async getSettings(): Promise<StudioSettings> {
     const res = await fetch('/api/settings');
