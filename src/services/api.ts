@@ -157,5 +157,105 @@ export const api = {
       body: JSON.stringify({ to })
     });
     return res.json();
+  },
+
+  // Google Sheets & Apps Script Integration (with direct client-side fallback)
+  async pingGoogleSheets(directUrl?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/sheets/ping');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) return data;
+      }
+    } catch {}
+
+    const url = directUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    try {
+      const res = await fetch(`${url}?action=ping`, { mode: 'cors' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getGoogleSheetsOrders(directUrl?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/sheets/orders');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) return data;
+      }
+    } catch {}
+
+    const url = directUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    try {
+      const res = await fetch(`${url}?action=getOrders`, { mode: 'cors' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getGoogleSheetsConversations(directUrl?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/sheets/conversations');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) return data;
+      }
+    } catch {}
+
+    const url = directUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    try {
+      const res = await fetch(`${url}?action=getConversations`, { mode: 'cors' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getGoogleSheetsContainers(directUrl?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/sheets/containers');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) return data;
+      }
+    } catch {}
+
+    const url = directUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    try {
+      const res = await fetch(`${url}?action=getContainers`, { mode: 'cors' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async postToGoogleSheets(payload: Record<string, unknown>, directUrl?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/sheets/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data) return data;
+      }
+    } catch {}
+
+    const url = directUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors' // Allows blind write from browser without CORS block
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 };

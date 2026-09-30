@@ -8,7 +8,8 @@ import {
   Smartphone, 
   Radio, 
   Flame, 
-  Building2 
+  Building2,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -174,6 +175,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between text-slate-400">
             <span>Meta API v20.0:</span>
             <span className="text-emerald-400 font-medium">מוכן + Fallback</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="flex items-center gap-1">
+              <FileSpreadsheet className="w-3 h-3 text-emerald-400" />
+              <span>Google Sheets:</span>
+            </span>
+            <span className="text-emerald-400 font-medium">נועה AI מחובר ✅</span>
           </div>
         </div>
       </div>

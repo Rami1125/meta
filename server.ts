@@ -36,6 +36,7 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || 'EAAfybToWbKABSiSBQ2DC7MzDW
 const GRAPH_VERSION = process.env.GRAPH_VERSION || 'v20.0';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'רמי מסארוה / ח. סבן';
 const DISPLAY_PHONE = process.env.DISPLAY_PHONE || '+972508860896';
+const GOOGLE_SHEET_WEBAPP_URL = process.env.GOOGLE_SHEET_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -53,7 +54,9 @@ let settings: StudioSettings = {
   metaDisplayPhone: DISPLAY_PHONE,
   metaConnectionStatus: 'מחובר ל-Cloud API',
   lastCheckResult: '{"verified_name":"ראמי מסארווה","display_phone_number":"+972 50-886-0896","id":"646128321917738"} - תקין ✅',
-  lastMessageIdSent: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA'
+  lastMessageIdSent: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA',
+  googleSheetWebAppUrl: GOOGLE_SHEET_WEBAPP_URL,
+  enableGoogleSheetsSync: true
 };
 let logs: LogEntry[] = JSON.parse(JSON.stringify(INITIAL_LOGS));
 let conversations: Conversation[] = JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS));
@@ -110,6 +113,29 @@ async function sendToJoniFirebase(payload: Record<string, unknown>) {
   } catch (err) {
     console.error('Error posting to JONI Firebase:', err);
     return false;
+  }
+}
+
+// Helper: Dispatch to Google Apps Script / Google Sheets
+async function sendToGoogleSheets(payload: Record<string, unknown>): Promise<any> {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  if (!url || settings.enableGoogleSheetsSync === false) return null;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { success: res.ok, raw: text };
+    }
+  } catch (err) {
+    console.error('Error posting to Google Sheets Web App:', err);
+    return null;
   }
 }
 
@@ -396,6 +422,20 @@ async function processIncomingMessage(payload: JoniWebhookPayload, channel: 'jon
     raw_payload: payload as unknown as Record<string, unknown>
   };
   logs.unshift(newLog);
+
+  // Dispatch to Google Sheets (שיחות_וואטסאפ_נועה)
+  sendToGoogleSheets({
+    action: 'logWhatsApp',
+    timestamp: new Date().toLocaleString('he-IL'),
+    phone: from,
+    customerName: customerName,
+    inquiryType: selectedMenuTitle || selectedRowId || 'פנייה כללית',
+    incomingMessage: incomingText || (selectedRowId ? `בחר אפשרות: ${selectedRowId}` : 'שיחה חדשה'),
+    branchName: selectedMenuTitle || selectedRowId || 'תפריט ראשי',
+    sentReply: sentResponseText,
+    status: 'טופל בהצלחה',
+    taskId: taskIdCreated || ''
+  }).catch(() => {});
 
   // Update or Create Conversation
   let conv = conversations.find(c => c.from === from);
@@ -1048,6 +1088,21 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
           console.error('Failed to write container task to Firebase:', e);
         }
 
+        // Write directly to Google Sheets (מכולות_פסולת)
+        sendToGoogleSheets({
+          action: 'addContainer',
+          containerId: `CNT-${Date.now().toString().slice(-4)}`,
+          customerName: cleanPayload.name || 'לקוח מכולה',
+          contractor: cleanPayload.name || 'קבלן שארק',
+          phone: cleanPayload.from,
+          address: address,
+          actionType: action,
+          size: size,
+          rentalDays: '1',
+          status: 'פעיל באתר',
+          notes: address
+        }).catch(err => console.error('Failed to sync container to Google Sheets:', err));
+
         replyText = `✅ פרטי המכולה נקלטו בהצלחה וסונכרנו ל-Firebase RTDB (joni/incoming)!\n\n📍 סוג פעולה: ${action}\n📦 גודל: ${size}\n🏠 כתובת ופרטים: ${address}\n\nנוצרה משימת תיאום עבור רמי מסארווה (050-886-0896) לתיאום משאית רמסע.`;
         flowTitle = 'יצירת משימת מכולה';
         chosenBranchId = 'create_container_task';
@@ -1142,6 +1197,19 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
       channel: 'joni',
       status: 'sent'
     });
+
+    // Sync to Google Sheets (שיחות_וואטסאפ_נועה)
+    sendToGoogleSheets({
+      action: 'logWhatsApp',
+      timestamp: new Date().toLocaleString('he-IL'),
+      phone: `+${cleanPayload.from}`,
+      customerName: cleanPayload.name || 'לקוח סבן',
+      inquiryType: chosenBranchId || 'פנייה כללית',
+      incomingMessage: cleanPayload.text || `[בחירת תפריט: ${flowTitle}]`,
+      branchName: flowTitle || chosenBranchId || 'תפריט ראשי',
+      sentReply: replyText,
+      status: 'טופל בהצלחה'
+    }).catch(err => console.error('Failed to log WhatsApp interaction to Google Sheets:', err));
 
     // 11. Update local conversations
     let conv = conversations.find(c => c.from.replace(/[^0-9]/g, '') === cleanPayload.from);
@@ -1754,6 +1822,60 @@ app.get('/api/dashboard/stats', (_req: Request, res: Response) => {
     businessNumber: settings.businessNumber,
     lastActive: logs[0]?.timestamp || new Date().toISOString()
   });
+});
+
+// 10. Google Sheets & Apps Script Bridge API
+app.get('/api/sheets/ping', async (_req: Request, res: Response) => {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  try {
+    const response = await fetch(`${url}?action=ping`, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
+    const data = await response.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sheets/orders', async (_req: Request, res: Response) => {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  try {
+    const response = await fetch(`${url}?action=getOrders`, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
+    const data = await response.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sheets/conversations', async (_req: Request, res: Response) => {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  try {
+    const response = await fetch(`${url}?action=getConversations`, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
+    const data = await response.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sheets/containers', async (_req: Request, res: Response) => {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  try {
+    const response = await fetch(`${url}?action=getContainers`, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
+    const data = await response.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/sheets/post', async (req: Request, res: Response) => {
+  const result = await sendToGoogleSheets(req.body);
+  if (result) {
+    res.json(result);
+  } else {
+    res.status(500).json({ success: false, error: 'Failed to post to Google Sheets Web App' });
+  }
 });
 
 // Dev vs Production Setup with Vite

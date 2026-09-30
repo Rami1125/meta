@@ -189,4 +189,6 @@ export interface StudioSettings {
   metaConnectionStatus?: string;
   lastCheckResult?: string;
   lastMessageIdSent?: string;
+  googleSheetWebAppUrl?: string;
+  enableGoogleSheetsSync?: boolean;
 }

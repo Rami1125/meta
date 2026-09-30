@@ -18,7 +18,9 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   metaDisplayPhone: '+972 50-886-0896',
   metaConnectionStatus: 'מחובר ל-Cloud API',
   lastCheckResult: '{"verified_name":"ראמי מסארווה","display_phone_number":"+972 50-886-0896","id":"646128321917738"} - תקין ✅',
-  lastMessageIdSent: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA'
+  lastMessageIdSent: 'wamid.HBgMOTcyNTI0NDU4OTEyFQIAERgUQ0VERkJFRjRGQTlENEFCRkRCMzcA',
+  googleSheetWebAppUrl: 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec',
+  enableGoogleSheetsSync: true
 };
 
 export const DEFAULT_FLOW: FlowTree = {

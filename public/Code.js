@@ -559,6 +559,23 @@ function doPost(e) {
     let result = { success: true };
 
     switch (action) {
+      // 0. בדיקת פינג תקינות
+      case 'ping': {
+        result = {
+          success: true,
+          status: 'online',
+          timestamp: new Date().toISOString(),
+          business: CONFIG.BUSINESS_NAME,
+          sheets: [
+            CONFIG.SHEETS.MORNING_REPORT,
+            CONFIG.SHEETS.WHATSAPP_CONVERSATIONS,
+            CONFIG.SHEETS.CONTAINERS,
+            CONFIG.SHEETS.SYSTEM_LOGS
+          ]
+        };
+        break;
+      }
+
       // 1. הוספת הזמנת הובלה חדשה לדוח הבוקר
       case 'addOrder':
       case 'insertOrder': {

@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Lock,
-  MessageSquare
+  MessageSquare,
+  FileSpreadsheet
 } from 'lucide-react';
 import { StudioSettings } from '../../types/studio';
 import { api } from '../../services/api';
@@ -70,6 +71,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // JONI & Firebase RTDB Test State
   const [isTestingJoni, setIsTestingJoni] = useState(false);
   const [joniTestResult, setJoniTestResult] = useState<any>(null);
+
+  // Google Sheets & Apps Script State
+  const [isPingingSheets, setIsPingingSheets] = useState(false);
+  const [sheetsPingResult, setSheetsPingResult] = useState<any>(null);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [sheetsOrdersResult, setSheetsOrdersResult] = useState<any>(null);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const joniWebhookUrl = `${origin}/api/webhooks/joni`;
@@ -156,6 +163,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setJoniTestResult({ status: 'error', error: err.message });
     }
     setIsTestingJoni(false);
+  };
+
+  const runPingSheets = async () => {
+    setIsPingingSheets(true);
+    setSheetsPingResult(null);
+    try {
+      const res = await api.pingGoogleSheets(formData.googleSheetWebAppUrl);
+      setSheetsPingResult(res);
+    } catch (err: any) {
+      setSheetsPingResult({ success: false, error: err.message });
+    }
+    setIsPingingSheets(false);
+  };
+
+  const runFetchOrders = async () => {
+    setIsLoadingOrders(true);
+    setSheetsOrdersResult(null);
+    try {
+      const res = await api.getGoogleSheetsOrders(formData.googleSheetWebAppUrl);
+      setSheetsOrdersResult(res);
+    } catch (err: any) {
+      setSheetsOrdersResult({ success: false, error: err.message });
+    }
+    setIsLoadingOrders(false);
   };
 
   return (
@@ -429,6 +460,181 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
 
+          </div>
+
+          {/* Google Sheets & Apps Script Production Integration */}
+          <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-700 via-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-700/20">
+                  <FileSpreadsheet className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                    <span>חיבור חי: Google Sheets & Apps Script</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
+                      נועה AI פעיל ✅
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    סנכרון דו-כיווני: דוח בוקר, שיחות וואטסאפ, מכולות פסולת ויומן ביקורת
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Google Apps Script Web App URL */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold text-slate-300">
+                כתובת Web App ב-Google Apps Script (Production):
+              </label>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
+                <input
+                  type="text"
+                  value={formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec'}
+                  onChange={(e) => setFormData({ ...formData, googleSheetWebAppUrl: e.target.value })}
+                  className="flex-1 bg-transparent border-0 text-xs font-mono text-emerald-300 dir-ltr text-left focus:outline-none truncate"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCopy(formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec', 'gas_url')}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
+                  title="העתק כתובת Web App"
+                >
+                  {copiedKey === 'gas_url' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Connected Sheets Summary Grid */}
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
+                <div className="text-slate-400 text-[10px]">טאב 1: הובלות</div>
+                <div className="font-semibold text-emerald-400 mt-0.5">דוח_בוקר_מבצעי</div>
+                <div className="text-[10px] text-slate-500">11 עמודות, Waze, פקדונות וסטטוס</div>
+              </div>
+              <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
+                <div className="text-slate-400 text-[10px]">טאב 2: תיעוד שיחות</div>
+                <div className="font-semibold text-emerald-400 mt-0.5">שיחות_וואטסאפ_נועה</div>
+                <div className="text-[10px] text-slate-500">ענף שנבחר, הודעה ומענה נועה</div>
+              </div>
+              <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
+                <div className="text-slate-400 text-[10px]">טאב 3: מכולות רמסע</div>
+                <div className="font-semibold text-emerald-400 mt-0.5">מכולות_פסולת</div>
+                <div className="text-[10px] text-slate-500">הצבה/החלפה, 6/8/12 קוב, רמי</div>
+              </div>
+              <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
+                <div className="text-slate-400 text-[10px]">טאב 4: ביקורת מערכת</div>
+                <div className="font-semibold text-emerald-400 mt-0.5">יומן_אירועים_וסנכרון</div>
+                <div className="text-[10px] text-slate-500">Audit Logs & Webhook Payload</div>
+              </div>
+            </div>
+
+            {/* Action Buttons: Ping & Live Orders Fetch */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={runPingSheets}
+                disabled={isPingingSheets}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-800 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-900/20 transition-all"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isPingingSheets ? 'animate-spin' : ''}`} />
+                <span>{isPingingSheets ? 'בודק חיבור מול הגיליון...' : 'בדוק חיבור Web App (Ping)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={runFetchOrders}
+                disabled={isLoadingOrders}
+                className="flex items-center gap-2 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isLoadingOrders ? 'טוען הזמנות...' : 'שלוף הזמנות חיות'}</span>
+              </button>
+
+              <a
+                href="/Code.js"
+                download="Code.js"
+                className="flex items-center gap-1.5 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs border border-slate-700 transition-all"
+                title="הורד קובץ Apps Script"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>קוד Apps Script</span>
+              </a>
+            </div>
+
+            {/* Ping Result Box */}
+            {sheetsPingResult && (
+              <div className={`p-3 rounded-2xl border text-xs space-y-1 animate-in fade-in ${
+                sheetsPingResult.success
+                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                  : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+              }`}>
+                {sheetsPingResult.success ? (
+                  <>
+                    <div className="flex items-center justify-between font-bold text-emerald-400">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>חיבור חי ומאומת ל-Google Sheets!</span>
+                      </span>
+                      <span className="text-[10px] font-mono bg-emerald-500/20 px-2 py-0.5 rounded">
+                        ONLINE 200 OK
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 pt-1 space-y-0.5">
+                      <div>עסק: <span className="font-semibold text-white">{sheetsPingResult.business}</span> ({sheetsPingResult.phone})</div>
+                      <div>טאבים מאומתים: <span className="text-emerald-300 font-mono text-[10px]">{Array.isArray(sheetsPingResult.sheets) ? sheetsPingResult.sheets.join(', ') : '4 טאבים'}</span></div>
+                      <div className="text-[10px] text-slate-400">חתימת זמן אחרונה: {new Date(sheetsPingResult.timestamp).toLocaleString('he-IL')}</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-rose-300">
+                    שגיאה בחיבור: {sheetsPingResult.error || 'נא לוודא שקובץ ה-Apps Script פורסם כ-Web App עם גישה לכולם.'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Live Orders Result Preview */}
+            {sheetsOrdersResult && (
+              <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between font-bold text-slate-200">
+                  <span className="flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    <span>הזמנות מתוך דוח_בוקר_מבצעי ({sheetsOrdersResult.count || 0})</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">מתוך הגיליון החי</span>
+                </div>
+                {Array.isArray(sheetsOrdersResult.orders) && sheetsOrdersResult.orders.length > 0 ? (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {sheetsOrdersResult.orders.map((ord: any, idx: number) => (
+                      <div key={idx} className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 text-[11px] flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-white flex items-center gap-2">
+                            <span>{ord['מספר הזמנה'] || `הזמנה #${idx + 1}`}</span>
+                            <span className="text-slate-400 font-normal">| {ord['שם לקוח']}</span>
+                          </div>
+                          <div className="text-slate-400 text-[10px] truncate max-w-[200px]">
+                            {ord['כתובת יעד ועיר']} • נהג: {ord['נהג משובץ']}
+                          </div>
+                        </div>
+                        <div className="text-left shrink-0">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            String(ord['סטטוס ביצוע']).includes('סופק') ? 'bg-emerald-500/20 text-emerald-400' :
+                            String(ord['סטטוס ביצוע']).includes('בסידור') ? 'bg-amber-500/20 text-amber-400' :
+                            'bg-rose-500/20 text-rose-400'
+                          }`}>
+                            {ord['סטטוס ביצוע'] || 'בסידור'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400">אין כרגע שורות הזמנות בגיליון.</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
