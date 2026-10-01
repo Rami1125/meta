@@ -941,12 +941,26 @@ export const api = {
     }
   },
 
-  async markBridgeSent(rowId: number): Promise<any> {
+  async markBridgeSent(rowId: number | string): Promise<any> {
     try {
       const res = await fetch('/api/bridge/mark-sent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowId })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // 15. Send Conversation Reply (Landing in WhatsApp!)
+  async sendConversationReply(convId: string, text: string, toPhone?: string, customerName?: string): Promise<any> {
+    try {
+      const res = await fetch(`/api/conversations/${convId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, toPhone, customerName })
       });
       return await res.json();
     } catch (err: any) {

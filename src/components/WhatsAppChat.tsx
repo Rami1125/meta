@@ -3,7 +3,6 @@ import {
   Send, 
   Smile, 
   Paperclip, 
-  Mic, 
   Phone, 
   MoreVertical, 
   Search, 
@@ -12,20 +11,32 @@ import {
   ArrowLeft,
   Sparkles,
   RefreshCw,
-  Building2
+  Building2,
+  Download,
+  Users,
+  Terminal,
+  Radio,
+  ExternalLink,
+  MessageCircle,
+  HelpCircle,
+  Copy,
+  X
 } from 'lucide-react';
-import { ref, get, onChildAdded } from 'firebase/database';
+import { ref, get, set, onChildAdded } from 'firebase/database';
 import { db } from '../firebase';
 import { api } from '../services/api';
+import { Conversation } from '../types/studio';
+import { WHATSAPP_BRIDGE_SOURCE_CODE } from '../data/bridgeScriptContent';
 
 export interface WhatsAppMessage {
   id: string;
-  sender: 'user' | 'bot'; // user = white bubble (left/right based on RTL), bot = #DCF8C6 green bubble
+  sender: 'user' | 'bot'; // user = white bubble (incoming customer), bot = green bubble #DCF8C6 (outgoing representative)
   text: string;
   timestamp: string;
   status?: 'sent' | 'delivered' | 'read';
   isMenuCard?: boolean;
   options?: string[];
+  dispatchedToWhatsApp?: boolean;
 }
 
 interface WhatsAppChatProps {
@@ -37,10 +48,47 @@ interface WhatsAppChatProps {
 
 export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   initialRecipient = '+972 50-886-0896',
-  customerName = 'לקוח וואטסאפ',
+  customerName = 'ראמי מסארווה (050-886-0896)',
   onBack,
   isStandalone = false
 }) => {
+  // Active conversation state
+  const [activePhone, setActivePhone] = useState(initialRecipient);
+  const [activeCustomerName, setActiveCustomerName] = useState(customerName);
+  const [conversationsList, setConversationsList] = useState<Conversation[]>([]);
+  const [isConversationsOpen, setIsConversationsOpen] = useState(false);
+  const [showBridgeModal, setShowBridgeModal] = useState(false);
+  const [copiedBridgeCode, setCopiedBridgeCode] = useState(false);
+
+  // Client-Side Direct Blob Download (100% reliable, no 302 or network issues)
+  const handleDownloadBridgeScript = () => {
+    try {
+      const blob = new Blob([WHATSAPP_BRIDGE_SOURCE_CODE], { type: 'application/javascript;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'whatsapp_bridge.js';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      window.open('/whatsapp_bridge.js', '_blank');
+    }
+  };
+
+  // Copy full source code to clipboard
+  const handleCopyBridgeScript = () => {
+    navigator.clipboard.writeText(WHATSAPP_BRIDGE_SOURCE_CODE).then(() => {
+      setCopiedBridgeCode(true);
+      setTimeout(() => setCopiedBridgeCode(false), 3000);
+    });
+  };
+
+  // Mode: 'operator' (sends to customer's WhatsApp) vs 'simulate_customer' (tests incoming message)
+  const [chatMode, setChatMode] = useState<'operator' | 'simulate_customer'>('operator');
+
+  // Messages state
   const [messages, setMessages] = useState<WhatsAppMessage[]>([
     {
       id: 'm1',
@@ -66,145 +114,27 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   ]);
 
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [sendSuccessToast, setSendSuccessToast] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Quick-Reply Templates
+  // Quick-Reply Templates for Saban Building Materials
   const quickTemplates = [
+    { id: 'q_menu', label: '📋 שלח תפריט סבן', text: 'ח. סבן חומרי בניין 🏗️\nברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:\n1 - 🚚 הזמנה והובלה לאתר\n2 - 🏭 איסוף עצמי ושעות פעילות\n3 - 🗑️ מכולות פסולת (6/8/12 קוב)\n4 - 🔍 מעקב משלוח ונהגים' },
     { id: 'q1', label: '🚚 יצא להובלה', text: 'היי, ההזמנה יצאה להובלה עם הנהג ראמי 🚚\nצפי הגעה כשעה. 📍 כתובת סופקה' },
     { id: 'q2', label: '🏪 מוכן לאיסוף', text: 'היי 👋 ההזמנה מוכנה לאיסוף במחסן כפר ברא 🏗️\nשעות פתיחה: 06:00-17:00\nרמי: 050-886-0896' },
     { id: 'q3', label: '🗑️ מכולה בדרך', text: 'המכולה בדרך אליך 🗑️\nהנהג ייצור קשר 30 דק לפני הגעה. נא להכין גישה למשאית.' },
     { id: 'q4', label: '📍 שלח מיקום', text: 'היי, תוכל לשלוח מיקום מדויק בוואטסאפ? 📍\nלחץ על 📎 > מיקום > שלח מיקום נוכחי' },
-    { id: 'q5', label: '💰 חשבונית', text: 'חשבונית מס מצורפת 💰\nלתשלום בביט / העברה בנקאית. תודה!' },
-    { id: 'q6', label: '❓ עזרה', text: 'היי, נציג ח. סבן זמין עבורך לכל שאלה בטלפון 050-886-0896 🏗️' }
+    { id: 'q5', label: '💰 חשבונית/תשלום', text: 'חשבונית מס מצורפת 💰\nלתשלום בביט / העברה בנקאית. תודה!' },
+    { id: 'q6', label: '❓ עזרה ובירור', text: 'היי, נציג ח. סבן זמין עבורך לכל שאלה בטלפון 050-886-0896 🏗️' }
   ];
 
-  // STEP 1 & STEP 3: Firebase RTDB Listener with Debug Logs
-  useEffect(() => {
-    console.log("🔍 START LISTENING TO: joni/incoming");
-
-    // Fetch live flow menu options dynamically directly from Firebase RTDB
-    api.getFlow()
-      .then(flow => {
-        if (flow && flow.nodes) {
-          const rootNode = flow.nodes.find((n: any) => n.id === flow.rootBlockId || n.isRoot) || flow.nodes[0];
-          if (rootNode && rootNode.data?.type === 'list_menu' && Array.isArray((rootNode.data as any).rows)) {
-            const rowTitles = (rootNode.data as any).rows.map((r: any) => r.title);
-            if (rowTitles.length > 0) {
-              setMessages(prev => prev.map(m => m.isMenuCard ? { ...m, options: rowTitles } : m));
-            }
-          }
-        }
-      })
-      .catch(() => {});
-
-    const incomingRef = ref(db, 'joni/incoming');
-
-    // DEBUG 1: Check if we can read
-    get(incomingRef).then(snap => {
-      console.log("📦 CURRENT DATA IN joni/incoming:", snap.val());
-      const val = snap.val() || {};
-      const count = Object.keys(val).length;
-      console.log("📦 COUNT:", count);
-
-      if (val && typeof val === 'object') {
-        const initial: WhatsAppMessage[] = [];
-        Object.entries(val).forEach(([key, data]: [string, any]) => {
-          const text = data.text || data.incoming_text || data.lastMessage || '';
-          if (text) {
-            initial.push({
-              id: key,
-              sender: 'user',
-              text,
-              timestamp: data.timestamp ? new Date(data.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
-              status: 'read'
-            });
-          }
-        });
-        if (initial.length > 0) {
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const fresh = initial.filter(m => !existingIds.has(m.id));
-            return [...prev, ...fresh];
-          });
-        }
-      }
-    }).catch(err => {
-      console.error("❌ FIREBASE READ ERROR:", err.code, err.message);
-      console.error("👉 FIX: Check Firebase Rules!");
-    });
-
-    const unsub = onChildAdded(incomingRef, (snap) => {
-      console.log("🔥 NEW MESSAGE DETECTED:", snap.key, snap.val());
-      const data = snap.val();
-
-      // CRITICAL FIX: Handle both structures
-      // Structure 1: {from, text, name}
-      // Structure 2: {from, incoming_text, sent_response}
-      const phone = (data.from || data.senderBusiness || '').toString().replace(/[^0-9]/g, '');
-      const text = data.text || data.incoming_text || data.lastMessage || '';
-
-      if (!phone || !text) {
-        console.warn("⚠️ SKIPPED - missing phone or text:", data);
-        return;
-      }
-
-      console.log("✅ PROCESSING:", phone, text);
-
-      // Force update UI state immediately (not only Firebase)
-      setMessages(prev => {
-        if (prev.some(m => m.id === snap.key || (m.text === text && m.sender === 'user'))) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: snap.key || `inc_${Date.now()}`,
-            sender: 'user',
-            text,
-            timestamp: getCurrentTime(),
-            status: 'read'
-          }
-        ];
-      });
-    });
-
-    return () => unsub();
-  }, []);
-
-  // STEP 4: Manual Sync Button For Testing
-  const handleManualSync = async () => {
-    try {
-      console.log("🔄 MANUAL SYNC TRIGGERED");
-      const snap = await get(ref(db, 'joni/incoming'));
-      const data = snap.val();
-      console.log("SYNC:", data);
-      if (data && typeof data === 'object') {
-        const loaded: WhatsAppMessage[] = [];
-        Object.entries(data).forEach(([key, msg]: [string, any]) => {
-          const text = msg.text || msg.incoming_text || msg.lastMessage || '';
-          if (text) {
-            loaded.push({
-              id: key,
-              sender: 'user',
-              text,
-              timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
-              status: 'read'
-            });
-          }
-        });
-        if (loaded.length > 0) {
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const fresh = loaded.filter(m => !existingIds.has(m.id));
-            return [...prev, ...fresh];
-          });
-        }
-      }
-    } catch (err) {
-      console.error("❌ SYNC FAILED:", err);
-    }
+  const getCurrentTime = () => {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   };
 
   const scrollToBottom = () => {
@@ -215,79 +145,224 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const getCurrentTime = () => {
-    const now = new Date();
-    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  // Load live conversations from server and select active
+  const loadConversations = async () => {
+    try {
+      const data: any = await api.getConversations();
+      const list = Array.isArray(data) ? data : (data?.conversations || []);
+      if (Array.isArray(list) && list.length > 0) {
+        setConversationsList(list);
+        const match = list.find((c: Conversation) => 
+          c.from.replace(/[^0-9]/g, '') === activePhone.replace(/[^0-9]/g, '')
+        );
+        if (match && match.messages && match.messages.length > 0) {
+          const mapped: WhatsAppMessage[] = match.messages.map((m: any) => ({
+            id: m.id || `m_${Math.random()}`,
+            sender: m.direction === 'incoming' ? 'user' : 'bot',
+            text: m.text,
+            timestamp: m.timestamp ? new Date(m.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
+            status: 'read',
+            dispatchedToWhatsApp: m.direction === 'outgoing'
+          }));
+          setMessages(mapped);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load conversations from server:', e);
+    }
   };
 
-  // Send message through Free Chat AI engine or fixed branch
+  // Initial fetch and 2.5s polling loop
+  useEffect(() => {
+    loadConversations();
+    const interval = setInterval(loadConversations, 2500);
+    return () => clearInterval(interval);
+  }, [activePhone]);
+
+  // Real-time Firebase RTDB Listener for instant sync
+  useEffect(() => {
+    const incomingRef = ref(db, 'joni/incoming');
+    const unsub = onChildAdded(incomingRef, (snap) => {
+      const data = snap.val();
+      if (!data) return;
+
+      const phone = String(data.from || '').replace(/[^0-9]/g, '');
+      const currentDigits = activePhone.replace(/[^0-9]/g, '');
+
+      // If matches active chat or if global
+      if (!currentDigits || phone.includes(currentDigits) || currentDigits.includes(phone)) {
+        const text = data.text || data.incoming_text || '';
+        const reply = data.reply || data.sent_response || '';
+
+        setMessages(prev => {
+          const updated = [...prev];
+          if (text && !updated.some(m => m.text === text && m.sender === 'user')) {
+            updated.push({
+              id: `inc_${snap.key || Date.now()}`,
+              sender: 'user',
+              text,
+              timestamp: getCurrentTime(),
+              status: 'read'
+            });
+          }
+          if (reply && !updated.some(m => m.text === reply && m.sender === 'bot')) {
+            updated.push({
+              id: `rep_${snap.key || Date.now()}`,
+              sender: 'bot',
+              text: reply,
+              timestamp: getCurrentTime(),
+              dispatchedToWhatsApp: true
+            });
+          }
+          return updated;
+        });
+      }
+    });
+
+    return () => unsub();
+  }, [activePhone]);
+
+  // Switch to another conversation
+  const selectConversation = (conv: Conversation) => {
+    setActivePhone(conv.from);
+    setActiveCustomerName(conv.customerName || conv.from);
+    setIsConversationsOpen(false);
+    if (conv.messages && conv.messages.length > 0) {
+      const mapped: WhatsAppMessage[] = conv.messages.map((m: any) => ({
+        id: m.id || `m_${Math.random()}`,
+        sender: m.direction === 'incoming' ? 'user' : 'bot',
+        text: m.text,
+        timestamp: m.timestamp ? new Date(m.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : getCurrentTime(),
+        status: 'read',
+        dispatchedToWhatsApp: m.direction === 'outgoing'
+      }));
+      setMessages(mapped);
+    }
+  };
+
+  // SEND MESSAGE HANDLER
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
-    if (!text) return;
+    if (!text || isSending) return;
 
-    const userMsg: WhatsAppMessage = {
-      id: `usr_${Date.now()}`,
-      sender: 'user',
-      text,
-      timestamp: getCurrentTime(),
-      status: 'read'
-    };
-
-    setMessages(prev => [...prev, userMsg]);
     setInputText('');
-    setIsTyping(true);
+    setIsSending(true);
 
-    try {
-      // Call direct Gemini Chat AI engine
-      const data = await api.chatAi({
-        from: initialRecipient.replace(/[^0-9]/g, ''),
+    if (chatMode === 'operator') {
+      // 1. OPERATOR MODE: The representative replies -> LANDS IN WHATSAPP!
+      const outMsg: WhatsAppMessage = {
+        id: `out_${Date.now()}`,
+        sender: 'bot', // Green WhatsApp bubble
         text,
-        history: messages.map(m => ({
-          role: m.sender === 'user' ? 'user' : 'model',
-          text: m.text
-        }))
-      });
-      setIsTyping(false);
-
-      const botReply = data.reply || "תודה שפנית לח. סבן חומרי בניין כפר ברא 🏗️. נשמח לספק לך את כל חומרי הבניין הדרושים!";
-
-      const botMsg: WhatsAppMessage = {
-        id: `bot_${Date.now()}`,
-        sender: 'bot',
-        text: botReply,
-        timestamp: getCurrentTime()
+        timestamp: getCurrentTime(),
+        dispatchedToWhatsApp: true
       };
 
-      setMessages(prev => [...prev, botMsg]);
+      setMessages(prev => [...prev, outMsg]);
 
-      // If there are suggested branches and not a simple check
-      if (data.suggested_branches && data.suggested_branches.length > 0 && !data.reply.includes('בדיקה עברה בהצלחה')) {
-        setTimeout(() => {
-          setMessages(prev => [
-            ...prev,
-            {
-              id: `menu_${Date.now()}`,
-              sender: 'bot',
-              text: 'אפשרויות זמינות לבחירה מהירה:',
-              timestamp: getCurrentTime(),
-              isMenuCard: true,
-              options: data.suggested_branches
-            }
-          ]);
-        }, 500);
+      try {
+        // 1. Send via Studio server
+        const res = await api.sendConversationReply(
+          `conv_${activePhone.replace(/[^0-9]/g, '')}`,
+          text,
+          activePhone,
+          activeCustomerName
+        );
+
+        // 2. Also queue directly in Firebase RTDB so local whatsapp_bridge picks it up instantly
+        try {
+          const outKey = Date.now().toString();
+          await set(ref(db, `joni/outbound/${outKey}`), {
+            phone: activePhone,
+            name: activeCustomerName,
+            message: text,
+            timestamp: Date.now()
+          });
+        } catch (fbErr) {
+          console.warn('Firebase RTDB outbound queue warning:', fbErr);
+        }
+
+        setSendSuccessToast('🚀 המענה שוגר ונוחת בוואטסאפ של הלקוח!');
+        setTimeout(() => setSendSuccessToast(null), 3500);
+
+        if (res && res.conversation && res.conversation.messages) {
+          // reload live state
+          loadConversations();
+        }
+      } catch (err: any) {
+        setSendSuccessToast(`שגיאה בשידור לוואטסאפ: ${err.message}`);
+        setTimeout(() => setSendSuccessToast(null), 4000);
+      } finally {
+        setIsSending(false);
       }
 
-    } catch (err) {
-      setIsTyping(false);
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `bot_err_${Date.now()}`,
+    } else {
+      // 2. SIMULATE CUSTOMER MODE: Incoming customer message -> AI replies
+      const userMsg: WhatsAppMessage = {
+        id: `usr_${Date.now()}`,
+        sender: 'user', // White bubble
+        text,
+        timestamp: getCurrentTime(),
+        status: 'read'
+      };
+
+      setMessages(prev => [...prev, userMsg]);
+      setIsTyping(true);
+
+      try {
+        const data = await api.chatAi({
+          from: activePhone.replace(/[^0-9]/g, ''),
+          text,
+          history: messages.map(m => ({
+            role: m.sender === 'user' ? 'user' : 'model',
+            text: m.text
+          }))
+        });
+
+        setIsTyping(false);
+        setIsSending(false);
+
+        const botReply = data.reply || "תודה שפנית לח. סבן חומרי בניין כפר ברא 🏗️. נשמח לספק לך את כל חומרי הבניין הדרושים!";
+
+        const botMsg: WhatsAppMessage = {
+          id: `bot_${Date.now()}`,
           sender: 'bot',
-          text: 'סבן חומרי בניין - תודה על פנייתך! נציג שירות יחזור אליך בהקדם. 050-8860896 🏗️',
-          timestamp: getCurrentTime()
+          text: botReply,
+          timestamp: getCurrentTime(),
+          dispatchedToWhatsApp: true
+        };
+
+        setMessages(prev => [...prev, botMsg]);
+
+        if (data.suggested_branches && data.suggested_branches.length > 0 && !data.reply.includes('בדיקה עברה בהצלחה')) {
+          setTimeout(() => {
+            setMessages(prev => [
+              ...prev,
+              {
+                id: `menu_${Date.now()}`,
+                sender: 'bot',
+                text: 'אפשרויות זמינות לבחירה מהירה:',
+                timestamp: getCurrentTime(),
+                isMenuCard: true,
+                options: data.suggested_branches
+              }
+            ]);
+          }, 400);
         }
-      ]);
+
+      } catch (err) {
+        setIsTyping(false);
+        setIsSending(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `bot_err_${Date.now()}`,
+            sender: 'bot',
+            text: 'סבן חומרי בניין - תודה על פנייתך! נציג שירות יחזור אליך בהקדם. 050-8860896 🏗️',
+            timestamp: getCurrentTime()
+          }
+        ]);
+      }
     }
   };
 
@@ -301,7 +376,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#E5DDD5] select-none font-['Assistant',sans-serif]" dir="rtl">
+    <div className="flex flex-col h-full w-full bg-[#E5DDD5] select-none font-['Assistant',sans-serif] relative" dir="rtl">
       
       {/* WhatsApp Green Top Header (#075E54) */}
       <header className="bg-[#075E54] text-white px-3 py-2.5 flex items-center justify-between shadow-md z-10 shrink-0">
@@ -309,7 +384,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
           {onBack && (
             <button 
               onClick={onBack}
-              className="p-1 hover:bg-[#128C7E]/50 rounded-full transition-colors active:scale-95"
+              className="p-1 hover:bg-[#128C7E]/50 rounded-full transition-colors active:scale-95 cursor-pointer"
               title="חזור"
             >
               <ArrowLeft className="w-5 h-5 text-white" />
@@ -326,45 +401,263 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
 
           <div className="flex flex-col text-right">
             <div className="font-bold text-sm tracking-tight flex items-center gap-1.5">
-              <span>ח. סבן חומרי בניין בע״מ</span>
-              <span className="text-[10px] bg-emerald-400/20 text-emerald-200 px-1.5 py-0.2 rounded font-mono font-normal">
-                רשמי ✓
+              <span>{activeCustomerName}</span>
+              <span className="text-[10px] bg-emerald-400/20 text-emerald-200 px-1.5 py-0.2 rounded font-mono font-normal dir-ltr">
+                {activePhone}
               </span>
             </div>
-            <div className="text-[11px] text-emerald-100/90 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#25D366] animate-pulse"></span>
-              <span>רמי מסארוה • מחובר עכשיו</span>
+            <div className="text-[11px] text-emerald-100/90 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#25D366] animate-pulse"></span>
+              <span>קשר דו-כיווני פעיל: מענה ינחת ב-WhatsApp ⚡</span>
             </div>
           </div>
         </div>
 
-        {/* Action icons */}
+        {/* Action icons & Bridge Dialog */}
         <div className="flex items-center gap-2 text-white/90">
-          {/* STEP 4: Manual Sync Button */}
-          <button 
-            onClick={handleManualSync}
-            className="px-2.5 py-1 text-xs bg-[#128C7E] hover:bg-[#25D366] text-white rounded-lg transition-all font-semibold flex items-center gap-1 active:scale-95 shadow-sm"
-            title="סנכרן הודעות ישירות מ-Firebase"
+          
+          {/* Conversation Switcher Drawer Button */}
+          <button
+            onClick={() => setIsConversationsOpen(!isConversationsOpen)}
+            className="px-2.5 py-1 text-xs bg-[#128C7E] hover:bg-[#25D366] hover:text-slate-950 text-white rounded-lg transition-all font-semibold flex items-center gap-1 active:scale-95 shadow-sm cursor-pointer"
+            title="בחר שיחה מרשימת הלקוחות"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>🔄 סנכרן הודעות</span>
+            <Users className="w-3.5 h-3.5" />
+            <span>שיחות ({conversationsList.length})</span>
+          </button>
+
+          {/* WhatsApp Bridge Daemon Help */}
+          <button 
+            onClick={() => setShowBridgeModal(true)}
+            className="px-2.5 py-1 text-xs bg-slate-900/60 hover:bg-slate-900 text-emerald-300 border border-emerald-500/40 rounded-lg transition-all font-semibold flex items-center gap-1 active:scale-95 shadow-sm cursor-pointer"
+            title="הורד והפעל סקריפט גשר לוואטסאפ"
+          >
+            <Terminal className="w-3.5 h-3.5 text-[#25D366]" />
+            <span>סקריפט גשר</span>
+          </button>
+
+          {/* Manual Refresh */}
+          <button 
+            onClick={loadConversations}
+            className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors cursor-pointer" 
+            title="רענן שיחה"
+          >
+            <RefreshCw className="w-4 h-4" />
           </button>
 
           <button 
-            onClick={() => window.open(`tel:${initialRecipient.replace(/[^0-9+]/g, '')}`)}
-            className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors"
+            onClick={() => window.open(`tel:${activePhone.replace(/[^0-9+]/g, '')}`)}
+            className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors cursor-pointer" 
             title="חייג"
           >
             <Phone className="w-4 h-4" />
           </button>
-          <button className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors" title="חיפוש">
-            <Search className="w-4 h-4" />
-          </button>
-          <button className="p-1.5 hover:bg-[#128C7E]/50 rounded-full transition-colors" title="עוד אפשרויות">
-            <MoreVertical className="w-4 h-4" />
-          </button>
         </div>
       </header>
+
+      {/* Mode Switcher Banner: Representative Reply vs Customer Simulation */}
+      <div className="bg-[#0b5345] px-3 py-1.5 flex items-center justify-between text-xs text-emerald-100 border-b border-[#128C7E]/40 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-emerald-300">מצב פעולה:</span>
+          <div className="flex items-center bg-slate-900/60 rounded-lg p-0.5 border border-emerald-500/30">
+            <button
+              onClick={() => setChatMode('operator')}
+              className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                chatMode === 'operator'
+                  ? 'bg-[#25D366] text-slate-950 shadow'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              מענה נציג לוואטסאפ 📱 (ינחת בוואטסאפ)
+            </button>
+            <button
+              onClick={() => setChatMode('simulate_customer')}
+              className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                chatMode === 'simulate_customer'
+                  ? 'bg-amber-400 text-slate-950 shadow'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              סימולציית הודעת לקוח 🧪
+            </button>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-emerald-200 hidden sm:block">
+          {chatMode === 'operator' 
+            ? '✅ כל הודעה שתישלח מכאן תשודר מיד לטלפון של הלקוח'
+            : '🧪 ההודעה תישלח כלקוח לבדיקת תגובת נועה AI'}
+        </div>
+      </div>
+
+      {/* Toast Notification */}
+      {sendSuccessToast && (
+        <div className="absolute top-14 left-1/2 transform -translate-x-1/2 z-30 bg-emerald-600 text-white font-bold px-4 py-2 rounded-xl shadow-2xl text-xs flex items-center gap-2 border border-emerald-400 animate-in fade-in slide-in-from-top-2">
+          <CheckCheck className="w-4 h-4" />
+          <span>{sendSuccessToast}</span>
+        </div>
+      )}
+
+      {/* Conversations Drawer Modal */}
+      {isConversationsOpen && (
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs z-30 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md max-h-[80%] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span>בחירת שיחת WhatsApp פעילה</span>
+              </h3>
+              <button 
+                onClick={() => setIsConversationsOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 border-b border-slate-800 space-y-1">
+              <label className="text-[11px] text-slate-400">שיחה עם מספר חדש:</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="05X-XXXXXXX / 9725XXXXXXXX"
+                  id="new_chat_phone"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono dir-ltr text-left"
+                />
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('new_chat_phone') as HTMLInputElement;
+                    if (el && el.value.trim()) {
+                      const num = el.value.trim();
+                      setActivePhone(num);
+                      setActiveCustomerName(`לקוח (${num})`);
+                      setIsConversationsOpen(false);
+                      setMessages([]);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-[#25D366] text-slate-950 font-bold rounded-xl text-xs hover:bg-[#20bd5a]"
+                >
+                  פתח צ'אט
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 divide-y divide-slate-800/60">
+              {conversationsList.map((conv) => (
+                <div
+                  key={conv.id}
+                  onClick={() => selectConversation(conv)}
+                  className={`p-3 rounded-xl transition-all cursor-pointer flex items-center justify-between ${
+                    conv.from.replace(/[^0-9]/g, '') === activePhone.replace(/[^0-9]/g, '')
+                      ? 'bg-emerald-950/60 border border-emerald-500/50'
+                      : 'hover:bg-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-xs text-white flex items-center gap-2">
+                      <span>{conv.customerName || 'לקוח'}</span>
+                      <span className="text-[10px] text-slate-400 font-mono dir-ltr">{conv.from}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 truncate max-w-[240px] mt-0.5">
+                      {conv.lastMessage || 'אין הודעות'}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                    {conv.messages?.length || 0} הודעות
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Bridge Help Modal */}
+      {showBridgeModal && (
+        <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl p-6 space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-5 h-5 text-[#25D366]" />
+                <h3 className="font-bold text-sm text-white">סקריפט גשר WhatsApp Web (סגירת מעגל מלאה)</h3>
+              </div>
+              <button 
+                onClick={() => setShowBridgeModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              סקריפט זה מאזין לחשבון הוואטסאפ האמיתי שלך באמצעות סריקת QR, משקף כל הודעה נכנסת בצ'אט הסטודיו, ומאזין לתור ההודעות היוצא מהממשק כדי שכל מענה שתקליד ינחת מיד בוואטסאפ של הלקוח!
+            </p>
+
+            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 text-xs">
+              <div className="text-emerald-400 font-bold">הוראות הפעלה פשוטות (3 צעדים בתיקייה C:\noa):</div>
+              <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px]">
+                <li>
+                  הורד או שמור את הקובץ ישירות ל-<b>C:\noa\whatsapp_bridge.js</b>:
+                  <div className="mt-1 flex items-center gap-2">
+                    <button
+                      onClick={handleDownloadBridgeScript}
+                      className="px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>הורד קובץ whatsapp_bridge.js</span>
+                    </button>
+                    <button
+                      onClick={handleCopyBridgeScript}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      {copiedBridgeCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedBridgeCode ? 'הקוד הועתק!' : 'העתק את כל הקוד'}</span>
+                    </button>
+                  </div>
+                </li>
+                <li>בטרמינל/CMD בתיקיית <b>C:\noa</b> הרץ פעם אחת:
+                  <div className="p-2 mt-1 bg-slate-900 rounded-xl font-mono text-[10px] text-cyan-300 dir-ltr text-left">
+                    npm install whatsapp-web.js qrcode-terminal qrcode express cors
+                  </div>
+                </li>
+                <li>הפעל את הסקריפט:
+                  <div className="p-2 mt-1 bg-slate-900 rounded-xl font-mono text-[10px] text-emerald-300 dir-ltr text-left">
+                    node whatsapp_bridge.js
+                  </div>
+                </li>
+              </ol>
+
+              {/* Troubleshooting note for Cannot find module */}
+              <div className="mt-2 p-2.5 bg-amber-950/40 border border-amber-500/30 rounded-xl text-[10px] text-amber-200/90 leading-relaxed">
+                <div className="font-bold text-amber-300 flex items-center gap-1 mb-0.5">
+                  <span>💡 קיבלת שגיאת Cannot find module?</span>
+                </div>
+                <span>
+                  ודא שהקובץ נמצא בתיקייה <code className="bg-slate-900 px-1 rounded text-white">C:\noa</code> ושחלונות לא הוסיפה לו סיומת <b>.txt</b> בטעות (למשל <code className="bg-slate-900 px-1 rounded text-white">whatsapp_bridge.js.txt</code>).<br />
+                  ב-CMD הרץ <code className="bg-slate-900 px-1 rounded text-white">dir whatsapp_bridge*</code>, ואם מופיע עם txt הרץ: <code className="bg-slate-900 px-1 rounded text-white">ren whatsapp_bridge.js.txt whatsapp_bridge.js</code>.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={handleDownloadBridgeScript}
+                className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-[#25D366]/20 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>הורד את הקובץ</span>
+              </button>
+
+              <button
+                onClick={() => setShowBridgeModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs cursor-pointer"
+              >
+                סגור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages Scroll Area with WhatsApp Doodle Pattern */}
       <div 
@@ -380,7 +673,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
         {/* Date bubble */}
         <div className="flex justify-center mb-3">
           <span className="bg-white/80 backdrop-blur-sm text-slate-600 text-[11px] px-3 py-1 rounded-lg shadow-sm border border-slate-200/60 font-medium">
-            היום • שיחת שירות לקוחות סבן
+            היום • שיחת שירות לקוחות סבן ({activeCustomerName})
           </span>
         </div>
 
@@ -401,6 +694,16 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
                     : 'bg-[#DCF8C6] text-slate-950 rounded-[7.5px] rounded-tr-none shadow-emerald-900/10'
                 }`}
               >
+                {/* Header label for clarity */}
+                <div className="text-[10px] font-bold mb-1 opacity-70 flex items-center justify-between gap-3">
+                  <span>{isUser ? activeCustomerName : 'ח. סבן (נציג)'}</span>
+                  {!isUser && (
+                    <span className="text-[9px] text-emerald-800 bg-emerald-700/15 px-1.5 py-0.2 rounded font-normal">
+                      נחת בוואטסאפ ✓✓
+                    </span>
+                  )}
+                </div>
+
                 {/* Text Content */}
                 <div className="whitespace-pre-wrap font-['Assistant',sans-serif] text-sm">
                   {m.text}
@@ -413,7 +716,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
                       <button
                         key={idx}
                         onClick={() => handleOptionClick(opt)}
-                        className="w-full text-right bg-white hover:bg-emerald-50 active:scale-98 border border-[#25D366] text-slate-900 font-semibold px-3 py-2 rounded-xl text-xs transition-all shadow-sm flex items-center justify-between group"
+                        className="w-full text-right bg-white hover:bg-emerald-50 active:scale-98 border border-[#25D366] text-slate-900 font-semibold px-3 py-2 rounded-xl text-xs transition-all shadow-sm flex items-center justify-between group cursor-pointer"
                       >
                         <span>{opt}</span>
                         <span className="text-[#25D366] group-hover:translate-x-[-2px] transition-transform text-sm font-bold">
@@ -427,7 +730,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
                 {/* Timestamp & double ticks */}
                 <div className={`flex items-center gap-1 justify-end text-[10px] mt-1 ${isUser ? 'text-slate-400' : 'text-slate-500'}`}>
                   <span>{m.timestamp}</span>
-                  {isUser && (
+                  {!isUser && (
                     <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1]" />
                   )}
                 </div>
@@ -443,7 +746,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce"></span>
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.2s]"></span>
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.4s]"></span>
-              <span className="text-xs text-emerald-800 font-medium mr-1.5">נציג סבן כותב...</span>
+              <span className="text-xs text-emerald-800 font-medium mr-1.5">נועה AI מנסחת מענה...</span>
             </div>
           </div>
         )}
@@ -458,7 +761,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
             <button
               key={t.id}
               onClick={() => setTemplate(t.text)}
-              className="whitespace-nowrap px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 active:scale-95 text-slate-800 text-xs font-semibold shadow-sm border border-slate-300 transition-all shrink-0"
+              className="whitespace-nowrap px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 active:scale-95 text-slate-800 text-xs font-semibold shadow-sm border border-slate-300 transition-all shrink-0 cursor-pointer"
             >
               {t.label}
             </button>
@@ -498,25 +801,32 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
                 handleSendMessage();
               }
             }}
-            placeholder="כתוב הודעה..."
+            placeholder={
+              chatMode === 'operator' 
+                ? `כתוב מענה שיישלח ישירות לוואטסאפ של ${activeCustomerName}...` 
+                : "כתוב הודעת לקוח מדומה..."
+            }
             className="w-full bg-transparent border-none text-slate-900 placeholder-slate-400 text-sm focus:outline-none"
           />
         </div>
 
-        {/* Send / Mic Button */}
+        {/* Send Button */}
         {inputText.trim() ? (
           <button
             onClick={() => handleSendMessage()}
-            className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white flex items-center justify-center shadow-md transition-all shrink-0"
-            title="שלח"
+            disabled={isSending}
+            className={`w-10 h-10 rounded-full active:scale-95 text-white flex items-center justify-center shadow-md transition-all shrink-0 cursor-pointer ${
+              chatMode === 'operator' ? 'bg-[#25D366] hover:bg-[#20bd5a]' : 'bg-amber-500 hover:bg-amber-600'
+            }`}
+            title={chatMode === 'operator' ? 'שלח מענה ישירות לוואטסאפ' : 'שלח כלקוח'}
           >
-            <Send className="w-4 h-4 rotate-180 fill-current" />
+            <Send className={`w-4 h-4 rotate-180 fill-current ${isSending ? 'animate-pulse' : ''}`} />
           </button>
         ) : (
           <button
-            onClick={() => handleSendMessage('בדיקה 🚚')}
-            className="w-10 h-10 rounded-full bg-[#128C7E] hover:bg-[#075E54] active:scale-95 text-white flex items-center justify-center shadow-md transition-all shrink-0"
-            title="בדיקה מהירה"
+            onClick={() => handleSendMessage('ח. סבן חומרי בניין כפר ברא - שלום! איך נוכל לעזור היום? 🏗️')}
+            className="w-10 h-10 rounded-full bg-[#128C7E] hover:bg-[#075E54] active:scale-95 text-white flex items-center justify-center shadow-md transition-all shrink-0 cursor-pointer"
+            title="מענה מהיר"
           >
             <Sparkles className="w-4 h-4" />
           </button>

@@ -56,6 +56,18 @@ export interface JoniMakeDispatchResult {
 }
 const joniMakeLogs: JoniMakeDispatchResult[] = [];
 
+// Local outbound queue for Chat UI to WhatsApp Web Bridge & daemon
+export interface OutboundQueueItem {
+  id: string;
+  phone: string;
+  name?: string;
+  message: string;
+  action?: string;
+  timestamp: string;
+  source: 'chat_ui' | 'system' | 'sheet';
+}
+let localPendingOutboundQueue: OutboundQueueItem[] = [];
+
 // Tool Definition for Gemini Function Calling (trigger_joni_make)
 const triggerJoniMakeFunctionDeclaration: FunctionDeclaration = {
   name: 'trigger_joni_make',
@@ -2154,41 +2166,120 @@ app.get('/api/conversations', (_req: Request, res: Response) => {
   res.json({ success: true, conversations });
 });
 
-app.post('/api/conversations/:id/reply', (req: Request, res: Response) => {
+app.post(['/api/conversations/:id/reply', '/api/chat/send-reply'], async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { text } = req.body;
-  const conv = conversations.find(c => c.id === id);
-
-  if (!conv) {
-    return res.status(404).json({ error: 'Conversation not found' });
+  const { text, toPhone, customerName } = req.body || {};
+  
+  if (!text || !String(text).trim()) {
+    return res.status(400).json({ success: false, error: 'Text cannot be empty' });
   }
+
+  const cleanText = String(text).trim();
+
+  // Find or create conversation
+  let conv = conversations.find(c => c.id === id || (toPhone && c.from.replace(/[^0-9]/g, '') === String(toPhone).replace(/[^0-9]/g, '')));
+  let targetPhone = toPhone || conv?.from || DISPLAY_PHONE || '972508860896';
+  let cleanDigits = String(targetPhone).replace(/[^0-9]/g, '');
+  if (cleanDigits.startsWith('05')) cleanDigits = '972' + cleanDigits.slice(1);
+  if (!cleanDigits) cleanDigits = '972508860896';
 
   const newMsg = {
     id: `m_out_${Date.now()}`,
     direction: 'outgoing' as const,
-    text: text || '',
+    text: cleanText,
     type: 'text' as const,
     timestamp: new Date().toISOString()
   };
 
-  conv.messages.push(newMsg);
-  conv.lastMessage = text;
-  conv.lastTimestamp = newMsg.timestamp;
+  if (!conv) {
+    conv = {
+      id: `conv_${cleanDigits}`,
+      from: `+${cleanDigits}`,
+      customerName: customerName || 'לקוח וואטסאפ',
+      lastMessage: cleanText,
+      lastTimestamp: newMsg.timestamp,
+      status: 'active',
+      messages: [newMsg]
+    };
+    conversations.unshift(conv);
+  } else {
+    conv.messages.push(newMsg);
+    conv.lastMessage = cleanText;
+    conv.lastTimestamp = newMsg.timestamp;
+  }
 
-  // Add to logs
+  // 1. Add to local outbound queue so whatsapp-web.js client sends it to WhatsApp immediately
+  const queueItem: OutboundQueueItem = {
+    id: `out_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    phone: cleanDigits,
+    name: conv.customerName,
+    message: cleanText,
+    action: 'customer_reply',
+    timestamp: newMsg.timestamp,
+    source: 'chat_ui'
+  };
+  localPendingOutboundQueue.push(queueItem);
+
+  // 2. Dispatch via Meta Cloud API
+  const metaSendPromise = sendWhatsAppText(cleanDigits, cleanText).catch(() => ({ success: false }));
+
+  // 3. Dispatch to Make Webhook
+  const makePromise = triggerJoniMake(cleanDigits, cleanText, 'customer_reply').catch(() => null);
+
+  // 4. Record to Google Sheets
+  sendToGoogleSheets({
+    action: 'logWhatsApp',
+    timestamp: new Date().toLocaleString('he-IL'),
+    phone: `+${cleanDigits}`,
+    customerName: conv.customerName,
+    inquiryType: 'מענה ידני מנציג (ממשק צ\'אט)',
+    incomingMessage: '[נשלח מממשק הצ\'אט של סבן]',
+    branchName: 'נציג סבן (ראמי)',
+    sentReply: cleanText,
+    status: 'נשלח לוואטסאפ'
+  }).catch(() => {});
+
+  // 5. Update Firebase RTDB
+  try {
+    fetch(`${FB_ROOT}/joni/incoming.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `+${cleanDigits}`,
+        name: conv.customerName,
+        text: '[מענה נציג מממשק הצ\'אט]',
+        reply: cleanText,
+        sender: 'operator',
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  } catch {}
+
+  // 6. Add to studio logs
   logs.unshift({
     id: `log_manual_${Date.now()}`,
-    from: conv.from,
+    from: `+${cleanDigits}`,
     customer_name: conv.customerName,
-    incoming_text: '[מענה ידני מנציג]',
-    sent_response: text,
+    incoming_text: '[מענה נציג מממשק הצ\'אט]',
+    sent_response: cleanText,
     response_type: 'text',
-    timestamp: new Date().toISOString(),
-    channel: 'meta',
+    timestamp: newMsg.timestamp,
+    channel: 'joni',
     status: 'sent'
   });
 
-  res.json({ success: true, message: newMsg, conversation: conv });
+  const [metaRes, makeRes] = await Promise.all([metaSendPromise, makePromise]);
+
+  res.json({
+    success: true,
+    message: newMsg,
+    conversation: conv,
+    dispatchedToWhatsApp: true,
+    metaResult: metaRes,
+    makeResult: makeRes,
+    queuedForBridge: true,
+    queueId: queueItem.id
+  });
 });
 
 // 8. Tasks API
@@ -2519,7 +2610,58 @@ app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
 
     await triggerJoniMake(cleanFrom, replyText, actionType);
 
-    // 3. Log to Studio
+    // 3. Reflect in Live Conversations so it appears in the Chat interface!
+    const normalizedPhone = `+${cleanFrom}`;
+    let conv = conversations.find(c => c.from.replace(/[^0-9]/g, '') === cleanFrom);
+    if (!conv) {
+      conv = {
+        id: `conv_${cleanFrom}`,
+        from: normalizedPhone,
+        customerName: senderName,
+        lastMessage: replyText,
+        lastTimestamp: new Date().toISOString(),
+        status: 'active',
+        messages: []
+      };
+      conversations.unshift(conv);
+    } else {
+      conv.customerName = senderName || conv.customerName;
+      conv.lastMessage = replyText;
+      conv.lastTimestamp = new Date().toISOString();
+    }
+
+    conv.messages.push({
+      id: `msg_in_${Date.now()}`,
+      direction: 'incoming',
+      text: incomingText,
+      type: 'text',
+      timestamp: new Date().toISOString()
+    });
+
+    conv.messages.push({
+      id: `msg_out_${Date.now() + 1}`,
+      direction: 'outgoing',
+      text: replyText,
+      type: 'text',
+      timestamp: new Date().toISOString()
+    });
+
+    // 4. Update Firebase RTDB joni/incoming
+    try {
+      fetch(`${FB_ROOT}/joni/incoming.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: normalizedPhone,
+          name: senderName,
+          text: incomingText,
+          reply: replyText,
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+    } catch {}
+
+    // 5. Log to Studio
     logs.unshift({
       id: `bridge_${Date.now()}`,
       from: `+${cleanFrom}`,
@@ -2547,13 +2689,29 @@ app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
 app.get('/api/bridge/pending', async (_req: Request, res: Response) => {
   try {
     const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
-    const response = await fetch(`${url}?action=get_pending`, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(15000)
-    });
-    const data: any = await response.json().catch(() => ({ pending: [] }));
-    res.json(data);
+    let sheetPending: any[] = [];
+    try {
+      const response = await fetch(`${url}?action=get_pending`, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(10000)
+      });
+      const data: any = await response.json().catch(() => ({ pending: [] }));
+      if (Array.isArray(data.pending)) {
+        sheetPending = data.pending;
+      }
+    } catch {}
+
+    const localItems = localPendingOutboundQueue.map(item => ({
+      rowId: item.id,
+      phone: item.phone,
+      name: item.name || 'לקוח וואטסאפ',
+      message: item.message,
+      source: 'chat_ui'
+    }));
+
+    const allPending = [...localItems, ...sheetPending];
+    res.json({ success: true, count: allPending.length, pending: allPending });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, pending: [] });
   }
@@ -2562,6 +2720,11 @@ app.get('/api/bridge/pending', async (_req: Request, res: Response) => {
 app.post('/api/bridge/mark-sent', async (req: Request, res: Response) => {
   try {
     const { rowId } = req.body || {};
+    if (typeof rowId === 'string' && rowId.startsWith('out_')) {
+      localPendingOutboundQueue = localPendingOutboundQueue.filter(item => item.id !== rowId);
+      return res.json({ success: true, rowId, status: 'marked_local_sent' });
+    }
+
     const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
     const response = await fetch(url, {
       method: 'POST',
