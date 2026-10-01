@@ -61,19 +61,23 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   const [copiedBridgeCode, setCopiedBridgeCode] = useState(false);
 
   // Client-Side Direct Blob Download (100% reliable, no 302 or network issues)
-  const handleDownloadBridgeScript = () => {
+  const handleDownloadBridgeScript = (ext: 'js' | 'cjs' = 'cjs') => {
     try {
-      const blob = new Blob([WHATSAPP_BRIDGE_SOURCE_CODE], { type: 'application/javascript;charset=utf-8' });
+      const code = ext === 'cjs' 
+        ? WHATSAPP_BRIDGE_SOURCE_CODE.replace("import { createRequire } from 'module';\nconst require = createRequire(import.meta.url);\n\n", "")
+        : WHATSAPP_BRIDGE_SOURCE_CODE;
+      const fileName = `whatsapp-web.${ext}`;
+      const blob = new Blob([code], { type: 'application/javascript;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'whatsapp_bridge.js';
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (e) {
-      window.open('/whatsapp_bridge.js', '_blank');
+      window.open(`/whatsapp-web.${ext}`, '_blank');
     }
   };
 
@@ -597,55 +601,60 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
               <div className="text-emerald-400 font-bold">הוראות הפעלה פשוטות (3 צעדים בתיקייה C:\noa):</div>
               <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px]">
                 <li>
-                  הורד או שמור את הקובץ ישירות ל-<b>C:\noa\whatsapp_bridge.js</b>:
-                  <div className="mt-1 flex items-center gap-2">
+                  הורד את הקובץ ישירות ל-<b>C:\noa\whatsapp-web.cjs</b> (או <b>whatsapp-web.js</b>):
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <button
-                      onClick={handleDownloadBridgeScript}
+                      onClick={() => handleDownloadBridgeScript('cjs')}
                       className="px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                      title="מומלץ ל-Windows ולפרויקטים עם type: module"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>הורד קובץ whatsapp_bridge.js</span>
+                      <span>הורד whatsapp-web.cjs (מומלץ)</span>
+                    </button>
+                    <button
+                      onClick={() => handleDownloadBridgeScript('js')}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>whatsapp-web.js</span>
                     </button>
                     <button
                       onClick={handleCopyBridgeScript}
                       className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       {copiedBridgeCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedBridgeCode ? 'הקוד הועתק!' : 'העתק את כל הקוד'}</span>
+                      <span>{copiedBridgeCode ? 'הקוד הועתק!' : 'העתק קוד'}</span>
                     </button>
                   </div>
                 </li>
-                <li>בטרמינל/CMD בתיקיית <b>C:\noa</b> הרץ פעם אחת:
+                <li>בטרמינל/CMD בתיקיית <b>C:\noa</b> הרץ פעם אחת (אם טרם הותקן):
                   <div className="p-2 mt-1 bg-slate-900 rounded-xl font-mono text-[10px] text-cyan-300 dir-ltr text-left">
                     npm install whatsapp-web.js qrcode-terminal qrcode express cors
                   </div>
                 </li>
-                <li>הפעל את הסקריפט:
-                  <div className="p-2 mt-1 bg-slate-900 rounded-xl font-mono text-[10px] text-emerald-300 dir-ltr text-left">
-                    node whatsapp_bridge.js
+                <li>הפעל את השרת:
+                  <div className="p-2 mt-1 bg-slate-900 rounded-xl font-mono text-[10px] text-emerald-300 dir-ltr text-left font-bold">
+                    node whatsapp-web.cjs
                   </div>
                 </li>
               </ol>
 
-              {/* Troubleshooting note for Cannot find module */}
-              <div className="mt-2 p-2.5 bg-amber-950/40 border border-amber-500/30 rounded-xl text-[10px] text-amber-200/90 leading-relaxed">
-                <div className="font-bold text-amber-300 flex items-center gap-1 mb-0.5">
-                  <span>💡 קיבלת שגיאת Cannot find module?</span>
-                </div>
-                <span>
-                  ודא שהקובץ נמצא בתיקייה <code className="bg-slate-900 px-1 rounded text-white">C:\noa</code> ושחלונות לא הוסיפה לו סיומת <b>.txt</b> בטעות (למשל <code className="bg-slate-900 px-1 rounded text-white">whatsapp_bridge.js.txt</code>).<br />
-                  ב-CMD הרץ <code className="bg-slate-900 px-1 rounded text-white">dir whatsapp_bridge*</code>, ואם מופיע עם txt הרץ: <code className="bg-slate-900 px-1 rounded text-white">ren whatsapp_bridge.js.txt whatsapp_bridge.js</code>.
+              {/* Helpful tips */}
+              <div className="mt-2 p-2.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-[10px] text-emerald-200/90 leading-relaxed">
+                <span className="font-bold text-emerald-300">⚡ סגירת מעגל מלאה:</span>
+                <span className="mr-1">
+                  כל הודעה נכנסת בוואטסאפ מופיעה מיד כאן בצ'אט, וכל מענה שתקליד בממשק הצ'אט נשלח פיזית לוואטסאפ של הלקוח.
                 </span>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-2">
               <button
-                onClick={handleDownloadBridgeScript}
+                onClick={() => handleDownloadBridgeScript('cjs')}
                 className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-[#25D366]/20 transition-all cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>הורד את הקובץ</span>
+                <span>הורד את whatsapp-web.cjs</span>
               </button>
 
               <button
