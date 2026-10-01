@@ -105,12 +105,12 @@ const DEFAULT_VISUAL_FLOW: VisualFlow = {
     {
       id: 'container_size_menu',
       type: 'menu',
-      title: '📦 בחירת נפח המכולה',
-      text: 'אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
+      title: '📦 בחירת סוג פעולה למכולה',
+      text: 'אנא בחר את סוג המבוקש:\n\n⚠️ דגש : נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.',
       options: [
-        '📦 6 קוב (מתאים לשיפוץ קל ודירות)',
-        '📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)',
-        '📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)'
+        '📦 הצבה ',
+        '📦 החלפה ',
+        '📦 הוצאה '
       ],
       position: { x: 800, y: 340 }
     },
@@ -233,6 +233,7 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [builderMode, setBuilderMode] = useState<'canvas' | 'outline'>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       return 'outline';
@@ -430,17 +431,28 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
   const handleSave = async () => {
     setIsSaving(true);
     setSaveSuccess(false);
+    setSaveMessage(null);
     try {
       const res = await api.saveChatFlow(flow);
       if (res && res.success) {
         setSaveSuccess(true);
+        setSaveMessage('✅ עץ הענפים נשמר בהצלחה ב-Firebase RTDB ובשרת!');
         if (onSave) onSave();
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setTimeout(() => {
+          setSaveSuccess(false);
+          setSaveMessage(null);
+        }, 4000);
+      } else {
+        setSaveMessage(`⚠️ שגיאה בשמירה: ${res?.message || 'אנא נסה שוב'}`);
+        setTimeout(() => setSaveMessage(null), 5000);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to save visual flow:', e);
+      setSaveMessage(`❌ שגיאה בשמירה: ${e.message || 'תקלת רשת'}`);
+      setTimeout(() => setSaveMessage(null), 5000);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleAddBlock = (template: typeof BLOCK_TEMPLATES[0]) => {
@@ -736,6 +748,17 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Floating Save Status Toast */}
+      {saveMessage && (
+        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 border animate-in fade-in slide-in-from-top-3 backdrop-blur-md ${
+          saveSuccess 
+            ? 'bg-emerald-950/95 text-emerald-200 border-emerald-500/50 shadow-emerald-500/20' 
+            : 'bg-rose-950/95 text-rose-200 border-rose-500/50 shadow-rose-500/20'
+        }`}>
+          <span>{saveMessage}</span>
+        </div>
+      )}
 
       {/* Main Workspace: Mobile Tree Outline View vs Desktop Figma Canvas */}
       {builderMode === 'outline' ? (

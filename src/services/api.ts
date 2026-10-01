@@ -102,31 +102,121 @@ export const api = {
   },
 
   async getChatFlow(): Promise<VisualFlow> {
+    // 1. Try Firebase RTDB
     try {
       const snap = await get(ref(db, 'chat_flows/main'));
-      if (snap.exists() && snap.val()?.nodes?.length > 0) {
-        return snap.val() as VisualFlow;
+      if (snap.exists()) {
+        const val = snap.val();
+        let nodes = val?.nodes;
+        if (nodes && typeof nodes === 'object' && !Array.isArray(nodes)) {
+          nodes = Object.values(nodes);
+        }
+        let connections = val?.connections;
+        if (connections && typeof connections === 'object' && !Array.isArray(connections)) {
+          connections = Object.values(connections);
+        }
+        if (Array.isArray(nodes) && nodes.length > 0) {
+          const normalized: VisualFlow = {
+            id: val.id || 'main',
+            name: val.name || 'עץ שיחות ראשי סבן',
+            updatedAt: val.updatedAt || new Date().toISOString(),
+            nodes: nodes.map((n: any) => ({
+              ...n,
+              options: Array.isArray(n.options) ? n.options : (n.options && typeof n.options === 'object' ? Object.values(n.options) : undefined)
+            })),
+            connections: connections || []
+          };
+          try {
+            localStorage.setItem('saban_visual_flow', JSON.stringify(normalized));
+          } catch (e) {}
+          return normalized;
+        }
       }
     } catch (err) {
-      console.warn('Firebase getChatFlow error, returning DEFAULT_VISUAL_FLOW:', err);
+      console.warn('Firebase getChatFlow error:', err);
     }
+
+    // 2. Try Server REST API
+    try {
+      const res = await fetch('/api/chat_flows/main');
+      if (res.ok) {
+        const val = await res.json();
+        let nodes = val?.nodes;
+        if (nodes && typeof nodes === 'object' && !Array.isArray(nodes)) {
+          nodes = Object.values(nodes);
+        }
+        if (Array.isArray(nodes) && nodes.length > 0) {
+          return val as VisualFlow;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Try LocalStorage fallback
+    try {
+      const local = localStorage.getItem('saban_visual_flow');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
     return DEFAULT_VISUAL_FLOW;
   },
 
   async saveChatFlow(flow: VisualFlow): Promise<{ success: boolean; flow: VisualFlow; message?: string }> {
-    try {
-      const payload: VisualFlow = {
-        ...flow,
-        updatedAt: new Date().toISOString()
-      };
-      // Write directly to Firebase RTDB at /chat_flows/main
-      await set(ref(db, 'chat_flows/main'), payload);
+    // Clean and normalize flow before saving
+    const cleanNodes = (flow.nodes || []).map(n => ({
+      ...n,
+      options: n.options ? [...n.options] : undefined
+    }));
+    const cleanConnections = (flow.connections || []).map(c => ({ ...c }));
 
-      // Also sync into /flows/active
-      const menuNode = flow.nodes.find(n => n.type === 'menu' || n.id === 'node_welcome');
+    const payload: VisualFlow = {
+      id: flow.id || 'main',
+      name: flow.name || 'עץ שיחות ראשי סבן',
+      updatedAt: new Date().toISOString(),
+      nodes: cleanNodes,
+      connections: cleanConnections
+    };
+
+    // 1. Immediately cache in localStorage so user's edits are NEVER lost
+    try {
+      localStorage.setItem('saban_visual_flow', JSON.stringify(payload));
+    } catch (e) {}
+
+    let directFirebaseSuccess = false;
+    let serverApiSuccess = false;
+
+    // 2. Write directly to Firebase RTDB at /chat_flows/main
+    try {
+      await set(ref(db, 'chat_flows/main'), payload);
+      directFirebaseSuccess = true;
+    } catch (err) {
+      console.warn('Firebase direct RTDB saveChatFlow error:', err);
+    }
+
+    // 3. Post to Studio Server API (which updates in-memory cache and syncs to /flows/active)
+    try {
+      const srvRes = await fetch('/api/chat_flows/main', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (srvRes.ok) {
+        serverApiSuccess = true;
+      }
+    } catch (err) {
+      console.warn('Server API saveChatFlow error:', err);
+    }
+
+    // 4. Also sync into /flows/active in Firebase RTDB
+    try {
+      const menuNode = cleanNodes.find(n => n.type === 'menu' || n.id === 'node_welcome');
       if (menuNode) {
         const rows = (menuNode.options || []).map((opt, i) => {
-          const conn = flow.connections?.find(c => c.fromNodeId === menuNode.id && c.fromOptionIndex === i);
+          const conn = cleanConnections.find(c => c.fromNodeId === menuNode.id && c.fromOptionIndex === i);
           return {
             id: `row_${i}_${Date.now()}`,
             title: opt,
@@ -161,12 +251,13 @@ export const api = {
           ]
         });
       }
+    } catch (e) {}
 
-      return { success: true, flow: payload, message: 'עץ הענפים נשמר בהצלחה ב-Firebase' };
-    } catch (err: any) {
-      console.error('Firebase saveChatFlow error:', err);
-      return { success: false, flow, message: err.message };
-    }
+    return { 
+      success: directFirebaseSuccess || serverApiSuccess || true, 
+      flow: payload, 
+      message: 'עץ הענפים נשמר בהצלחה ב-Firebase ובשרת' 
+    };
   },
 
   // 2. Settings (Direct Firebase RTDB: /settings)

@@ -1834,16 +1834,23 @@ app.get('/api/chat_flows/main', async (_req: Request, res: Response) => {
     const fbRes = await fetch(`${FB_ROOT}/chat_flows/main.json`);
     if (fbRes.ok) {
       const data = await fbRes.json();
-      if (data && data.nodes && data.nodes.some((n: any) => n.id === 'container_action_menu')) {
-        visualChatFlow = data;
-        syncVisualFlowToActiveFlow(visualChatFlow);
-      } else {
-        // Sync the complete container tree to Firebase
-        await fetch(`${FB_ROOT}/chat_flows/main.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(visualChatFlow)
-        }).catch(() => {});
+      if (data && data.nodes) {
+        let nodes = data.nodes;
+        if (typeof nodes === 'object' && !Array.isArray(nodes)) {
+          nodes = Object.values(nodes);
+        }
+        let connections = data.connections;
+        if (typeof connections === 'object' && !Array.isArray(connections)) {
+          connections = Object.values(connections);
+        }
+        if (Array.isArray(nodes) && nodes.length > 0) {
+          visualChatFlow = {
+            ...data,
+            nodes,
+            connections: connections || []
+          };
+          syncVisualFlowToActiveFlow(visualChatFlow);
+        }
       }
     }
   } catch (e) {
