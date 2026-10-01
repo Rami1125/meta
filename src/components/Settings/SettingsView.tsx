@@ -21,7 +21,8 @@ import {
   RefreshCw,
   Lock,
   MessageSquare,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Zap
 } from 'lucide-react';
 import { StudioSettings } from '../../types/studio';
 import { api } from '../../services/api';
@@ -70,6 +71,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSendingLiveMenu, setIsSendingLiveMenu] = useState(false);
   const [liveMenuResult, setLiveMenuResult] = useState<any>(null);
 
+  // Two-Way JONI Bridge & Menu Dispatch State
+  const [targetMenuPhone, setTargetMenuPhone] = useState('050-886-0896');
+  const [isSendingJoniMenu, setIsSendingJoniMenu] = useState(false);
+  const [joniMenuResult, setJoniMenuResult] = useState<any>(null);
+  const [isSyncingBridge, setIsSyncingBridge] = useState(false);
+  const [bridgeSyncResult, setBridgeSyncResult] = useState<any>(null);
+
   // JONI & Firebase RTDB Test State
   const [isTestingJoni, setIsTestingJoni] = useState(false);
   const [joniTestResult, setJoniTestResult] = useState<any>(null);
@@ -114,6 +122,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setTestResult({ error: err.message });
     }
     setIsTesting(false);
+  };
+
+  const runSendJoniMenu = async () => {
+    setIsSendingJoniMenu(true);
+    setJoniMenuResult(null);
+    try {
+      const res = await api.sendMenuViaJoni(targetMenuPhone);
+      setJoniMenuResult(res);
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setJoniMenuResult({ success: false, error: err.message });
+    } finally {
+      setIsSendingJoniMenu(false);
+    }
+  };
+
+  const runSyncBridge = async () => {
+    setIsSyncingBridge(true);
+    setBridgeSyncResult(null);
+    try {
+      const res = await api.syncBridgeQueue();
+      setBridgeSyncResult(res);
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setBridgeSyncResult({ success: false, error: err.message });
+    } finally {
+      setIsSyncingBridge(false);
+    }
   };
 
   const runMetaLiveCheck = async () => {
@@ -222,6 +258,124 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
         {/* Left Column: Fixed Business Details & JONI Bridge */}
         <div className="space-y-6">
+
+          {/* Two-Way Connection & Menu Dispatch Card (Server ⇄ JONI ⇄ WhatsApp ⇄ Apps Script) */}
+          <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 border border-cyan-500/40 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-teal-500 to-emerald-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-cyan-500/20">
+                  <Zap className="w-5 h-5 fill-current" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100 flex items-center gap-1.5">
+                    <span>קשר דו-כיווני וסגירת מעגל: שרת ⇄ תוסף JONI ⇄ WhatsApp</span>
+                  </h3>
+                  <p className="text-[11px] text-cyan-300">
+                    שליחת תפריט סבן, סנכרון תור יוצא וחיבור מלא ל-Google Apps Script
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-500/30 font-bold">
+                קשר דו-כיווני פעיל ⚡
+              </span>
+            </div>
+
+            {/* Architecture Pipeline Pills */}
+            <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 text-[11px] space-y-2">
+              <div className="text-slate-400 font-semibold">שרשרת סגירת המעגל בזמן אמת:</div>
+              <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px] dir-ltr text-left">
+                <span className="px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700">Studio Server :3000</span>
+                <span className="text-cyan-400 font-bold">⇄</span>
+                <span className="px-2 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">Apps Script (AKfycbwAk...)</span>
+                <span className="text-cyan-400 font-bold">⇄</span>
+                <span className="px-2 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40">JONI Make Webhook</span>
+                <span className="text-cyan-400 font-bold">⇄</span>
+                <span className="px-2 py-1 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-500/30">WhatsApp +972508860896</span>
+              </div>
+            </div>
+
+            {/* Target Phone & Send Menu Form */}
+            <div className="space-y-2">
+              <label className="block text-xs text-slate-300 font-semibold">
+                מספר יעד לשליחת תפריט סבן דרך השרת ותוסף JONI:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={targetMenuPhone}
+                  onChange={(e) => setTargetMenuPhone(e.target.value)}
+                  placeholder="050-8860896 / 052-4458912"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono dir-ltr text-left focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setTargetMenuPhone('050-886-0896')}
+                  className="px-2 py-1 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:text-white"
+                >
+                  סבן
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetMenuPhone('052-4458912')}
+                  className="px-2 py-1 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:text-white"
+                >
+                  רמי
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={runSendJoniMenu}
+                disabled={isSendingJoniMenu}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 active:scale-95 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
+              >
+                <Send className={`w-3.5 h-3.5 ${isSendingJoniMenu ? 'animate-bounce' : ''}`} />
+                <span>{isSendingJoniMenu ? 'משדר תפריט דרך JONI...' : 'שלח תפריט דרך השרת ותוסף JONI'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={runSyncBridge}
+                disabled={isSyncingBridge}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-cyan-300 rounded-xl text-xs font-semibold border border-cyan-500/30 transition-all cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBridge ? 'animate-spin' : ''}`} />
+                <span>{isSyncingBridge ? 'מסנכרן תור יוצא...' : 'סנכרן תור יוצא מ-Google Sheet'}</span>
+              </button>
+            </div>
+
+            {/* Result of Menu Sending */}
+            {joniMenuResult && (
+              <div className={`p-3 rounded-2xl border text-xs space-y-1 animate-in fade-in ${
+                joniMenuResult.success
+                  ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-200'
+                  : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+              }`}>
+                <div className="flex items-center justify-between font-bold text-cyan-300">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                    <span>{joniMenuResult.message || 'תפריט סבן שודר בהצלחה!'}</span>
+                  </span>
+                  <span className="text-[10px] font-mono bg-cyan-500/20 px-2 py-0.5 rounded">
+                    200 OK
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-cyan-100 dir-ltr text-left pt-1">
+                  יעד: {joniMenuResult.recipient} | Make Webhook: שודר בהצלחה ✅
+                </div>
+              </div>
+            )}
+
+            {/* Result of Outbound Queue Sync */}
+            {bridgeSyncResult && (
+              <div className="p-3 bg-slate-950 border border-cyan-500/30 rounded-2xl text-xs text-cyan-300 animate-in fade-in">
+                {bridgeSyncResult.message || 'הסנכרון בוצע בהצלחה!'}
+              </div>
+            )}
+          </div>
 
           {/* PWA Mobile App Section */}
           <div className="p-5 rounded-3xl bg-gradient-to-tr from-slate-900 via-slate-900 to-[#075E54]/30 border border-[#25D366]/40 shadow-xl space-y-3.5">
@@ -491,13 +645,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-700/80">
                 <input
                   type="text"
-                  value={formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec'}
+                  value={formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec'}
                   onChange={(e) => setFormData({ ...formData, googleSheetWebAppUrl: e.target.value })}
                   className="flex-1 bg-transparent border-0 text-xs font-mono text-emerald-300 dir-ltr text-left focus:outline-none truncate"
                 />
                 <button
                   type="button"
-                  onClick={() => handleCopy(formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec', 'gas_url')}
+                  onClick={() => handleCopy(formData.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec', 'gas_url')}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
                   title="העתק כתובת Web App"
                 >

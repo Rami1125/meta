@@ -804,7 +804,7 @@ export const api = {
   },
 
   async getGoogleSheetsConversations(directUrl?: string): Promise<any> {
-    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec';
     try {
       const res = await fetch(`${url}?action=getConversations`, { mode: 'cors' });
       return await res.json();
@@ -814,7 +814,7 @@ export const api = {
   },
 
   async getGoogleSheetsContainers(directUrl?: string): Promise<any> {
-    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec';
     try {
       const res = await fetch(`${url}?action=getContainers`, { mode: 'cors' });
       return await res.json();
@@ -824,7 +824,7 @@ export const api = {
   },
 
   async postToGoogleSheets(payload: Record<string, unknown>, directUrl?: string): Promise<any> {
-    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+    const url = directUrl || DEFAULT_SETTINGS.googleSheetWebAppUrl || 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec';
     try {
       await fetch(url, {
         method: 'POST',
@@ -896,6 +896,61 @@ export const api = {
         ],
         recentDispatches: []
       };
+    }
+  },
+
+  // 13. Direct Menu Sending (Server & JONI Two-Way Connection)
+  async sendMenuViaJoni(to?: string, customNote?: string): Promise<any> {
+    try {
+      const res = await fetch('/api/joni/send-menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, customNote })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // 14. Two-Way WhatsApp Bridge API
+  async getBridgeStatus(): Promise<any> {
+    try {
+      const res = await fetch('/api/bridge/status');
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async getBridgePending(): Promise<any> {
+    try {
+      const res = await fetch('/api/bridge/pending');
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message, pending: [] };
+    }
+  },
+
+  async syncBridgeQueue(): Promise<any> {
+    try {
+      const res = await fetch('/api/bridge/sync', { method: 'POST' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async markBridgeSent(rowId: number): Promise<any> {
+    try {
+      const res = await fetch('/api/bridge/mark-sent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowId })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
   }
 };

@@ -35,6 +35,23 @@ export const ToolsView: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [isSendingMenuDirect, setIsSendingMenuDirect] = useState(false);
+  const [directMenuNotice, setDirectMenuNotice] = useState<string | null>(null);
+
+  const handleSendMenuDirect = async () => {
+    setIsSendingMenuDirect(true);
+    setDirectMenuNotice(null);
+    try {
+      const res = await api.sendMenuViaJoni(toPhone);
+      setDirectMenuNotice(res.success ? 'תפריט סבן שודר בהצלחה בוואטסאפ ובתוסף JONI!' : res.error);
+      fetchToolsData();
+      setTimeout(() => setDirectMenuNotice(null), 4000);
+    } catch (err: any) {
+      setDirectMenuNotice(err.message);
+    } finally {
+      setIsSendingMenuDirect(false);
+    }
+  };
 
   const presetMessages: Record<string, { label: string; text: string; action: 'send_menu' | 'order_update' | 'container_task' | 'customer_reply' }> = {
     menu: {
@@ -132,7 +149,16 @@ export const ToolsView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={handleSendMenuDirect}
+            disabled={isSendingMenuDirect}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+          >
+            <Send className={`w-3.5 h-3.5 ${isSendingMenuDirect ? 'animate-bounce' : ''}`} />
+            <span>{isSendingMenuDirect ? 'משדר תפריט...' : 'שליחת תפריט דרך השרת ותוסף JONI'}</span>
+          </button>
+
           <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-slate-300 font-medium">חיבור ישיר:</span>
@@ -142,13 +168,20 @@ export const ToolsView: React.FC = () => {
           <button
             onClick={fetchToolsData}
             disabled={isLoadingLogs}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
             title="רענן היסטוריית שידורים"
           >
             <RefreshCw className={`w-4 h-4 ${isLoadingLogs ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
+
+      {directMenuNotice && (
+        <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 text-xs text-emerald-300 font-medium animate-in fade-in flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{directMenuNotice}</span>
+        </div>
+      )}
 
       {/* Grid: Tool Definition & Closed Loop Architecture */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

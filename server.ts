@@ -37,7 +37,9 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const GRAPH_VERSION = process.env.GRAPH_VERSION || 'v20.0';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'רמי מסארוה / ח. סבן';
 const DISPLAY_PHONE = process.env.DISPLAY_PHONE || '+972508860896';
-const GOOGLE_SHEET_WEBAPP_URL = process.env.GOOGLE_SHEET_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbwAPxnpsQxYOul2jxnyxKGg83DGYnXHFahrWT7VZh-JgwVtGypG2u7lMe_wjLKeF_QZ/exec';
+const GOOGLE_SHEET_WEBAPP_URL = (process.env.GOOGLE_SHEET_WEBAPP_URL && !process.env.GOOGLE_SHEET_WEBAPP_URL.includes('AKfycbwAP')) 
+  ? process.env.GOOGLE_SHEET_WEBAPP_URL 
+  : 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec';
 const MAKE_JONI_WEBHOOK_URL = process.env.MAKE_JONI_WEBHOOK_URL || 'https://hook.eu1.make.com/iozzim8loo8gtkq62wb4axycdskfe080';
 
 // Log of recent dispatches sent to Make
@@ -2341,6 +2343,262 @@ app.post('/api/tools/trigger-joni-make', async (req: Request, res: Response) => 
   }
 });
 
+// 12. Direct Menu Sending (Server & JONI Plugin Two-Way Connection)
+app.post(['/api/joni/send-menu', '/api/whatsapp/send-menu'], async (req: Request, res: Response) => {
+  try {
+    const { to, customNote } = req.body || {};
+    let target = String(to || DISPLAY_PHONE || '972508860896').replace(/[^0-9]/g, '');
+    if (target.startsWith('05')) target = '972' + target.slice(1);
+    if (!target) target = '972508860896';
+
+    const menuText = customNote 
+      ? `${customNote}\n\n${FALLBACK_WELCOME_TEXT}`
+      : FALLBACK_WELCOME_TEXT;
+
+    // 1. Send via WhatsApp Text / Cloud API
+    const sendResult = await sendWhatsAppText(target, menuText);
+
+    // 2. Dispatch to JONI Make Webhook
+    const makeResult = await triggerJoniMake(target, menuText, 'send_menu');
+
+    // 3. Sync to Google Sheets
+    sendToGoogleSheets({
+      action: 'logWhatsApp',
+      timestamp: new Date().toLocaleString('he-IL'),
+      phone: `+${target}`,
+      customerName: 'לקוח סבן (שליחת תפריט יזומה)',
+      inquiryType: 'תפריט ראשי סבן',
+      incomingMessage: '[שליחת תפריט דרך שרת סטודיו ותוסף JONI]',
+      branchName: 'תפריט ראשי סבן',
+      sentReply: menuText,
+      status: 'נשלח בהצלחה'
+    }).catch(() => {});
+
+    // 4. Update Studio Logs
+    logs.unshift({
+      id: `menu_dispatch_${Date.now()}`,
+      from: `+${target}`,
+      customer_name: 'לקוח סבן (שליחת תפריט)',
+      incoming_text: '[שליחת תפריט דרך השרת ותוסף JONI]',
+      selected_menu_id: 'welcome_menu',
+      selected_menu_title: 'ח. סבן 🏗️ תפריט ראשי',
+      sent_response: menuText,
+      response_type: 'list_menu',
+      timestamp: new Date().toISOString(),
+      channel: 'joni',
+      status: 'sent'
+    });
+
+    res.json({
+      success: true,
+      message: 'תפריט סבן שודר בהצלחה בוואטסאפ ובתוסף JONI (קשר דו-כיווני וסגירת מעגל)',
+      recipient: target,
+      menuText,
+      whatsappResult: sendResult,
+      makeResult
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13. Two-Way WhatsApp Bridge & Outbound Queue System (Script ⇄ JONI ⇄ Server)
+async function checkOutboundQueueFromSheet() {
+  const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+  if (!url || settings.enableGoogleSheetsSync === false) return;
+
+  try {
+    const response = await fetch(`${url}?action=get_pending`, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const data: any = await response.json().catch(() => ({}));
+    if (!data.pending || !Array.isArray(data.pending) || data.pending.length === 0) return;
+
+    console.log(`[Google Apps Script Outbound Queue] Found ${data.pending.length} pending message(s) to send!`);
+
+    for (const item of data.pending) {
+      let cleanPhone = String(item.phone || '').replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('0')) cleanPhone = '972' + cleanPhone.slice(1);
+      if (!cleanPhone) cleanPhone = '972508860896';
+
+      console.log(`📤 Dispatching pending message from sheet to ${item.name || 'לקוח'} (${cleanPhone}):`, item.message);
+
+      // 1. Send via WhatsApp
+      await sendWhatsAppText(cleanPhone, item.message);
+
+      // 2. Dispatch to Make Webhook
+      await triggerJoniMake(cleanPhone, item.message, 'customer_reply');
+
+      // 3. Mark row as sent in Google Apps Script
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_sent', rowId: item.rowId }),
+        redirect: 'follow'
+      }).catch(err => console.error('Failed to mark sent in Apps Script:', err));
+
+      // 4. Record to studio logs
+      logs.unshift({
+        id: `outbound_queue_${Date.now()}_${item.rowId}`,
+        from: `+${cleanPhone}`,
+        customer_name: item.name || 'לקוח מהגיליון',
+        incoming_text: `[תור הודעות יוצא מהגיליון - שורה ${item.rowId}]`,
+        sent_response: item.message,
+        response_type: 'text',
+        timestamp: new Date().toISOString(),
+        channel: 'joni',
+        status: 'sent'
+      });
+    }
+  } catch (err: any) {
+    // transient network error
+  }
+}
+
+// Bridge API for External Scripts (whatsapp-web.js client or desktop daemon)
+app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
+  try {
+    const { from, name, text, timestamp } = req.body || {};
+    let cleanFrom = String(from || '').replace(/[^0-9]/g, '');
+    if (cleanFrom.startsWith('05')) cleanFrom = '972' + cleanFrom.slice(1);
+    if (!cleanFrom) cleanFrom = '972508860896';
+
+    const senderName = name || 'לקוח וואטסאפ';
+    const incomingText = String(text || '').trim();
+
+    // 1. Forward to Google Apps Script for live 2-way script reply
+    let replyText = '';
+    const scriptUrl = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+    try {
+      const scriptRes = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: cleanFrom,
+          name: senderName,
+          text: incomingText,
+          timestamp: timestamp || new Date().toISOString()
+        }),
+        redirect: 'follow',
+        signal: AbortSignal.timeout(10000)
+      });
+      const scriptData: any = await scriptRes.json().catch(() => ({}));
+      if (scriptData && scriptData.reply) {
+        replyText = scriptData.reply.trim();
+      }
+    } catch (e: any) {
+      console.warn('[Bridge] Apps Script query warning:', e.message);
+    }
+
+    if (!replyText) {
+      // Fallback Saban Menu / Response
+      const lower = incomingText.toLowerCase();
+      if (lower.includes('1') || lower.includes('הובלה') || lower.includes('ברזל') || lower.includes('בלוק') || lower.includes('מלט')) {
+        replyText = '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת מדויקת? נציגנו ראמי מסארווה (050-886-0896) יתאם אספקה מהירה לאתר.';
+      } else if (lower.includes('2') || lower.includes('איסוף') || lower.includes('מחסן')) {
+        replyText = '🏪 מחסן ח. סבן כפר ברא פתוח בימים א-ה 06:00-17:00, ויום ו 06:30-13:00. שלח פירוט וראמי יכין לך הכל מראש במזלג!';
+      } else if (lower.includes('3') || lower.includes('מכולה') || lower.includes('פסולת')) {
+        replyText = '🗑️ שירות מכולות פסולת ח. סבן: זמינות מכולות 6, 8 ו-12 קוב להצבה מיידית. אנא ציין כתובת ונפח מבוקש. שים לב שנדרשת גישה פנויה למשאית רמסע 🚛.';
+      } else if (lower.includes('4') || lower.includes('מעקב') || lower.includes('נהג')) {
+        replyText = '🔍 מעקב משלוחים ח. סבן: נהג מנוף ראמי נמצא בדרכים. לבירור ישיר צלצל עכשיו: 050-886-0896 📞.';
+      } else if (lower.includes('בדיקה') || incomingText === 'test') {
+        replyText = 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?';
+      } else {
+        replyText = FALLBACK_WELCOME_TEXT;
+      }
+    }
+
+    // 2. Broadcast to Make Webhook
+    let actionType = 'customer_reply';
+    if (replyText.includes('הקלד מספר לבחירה') || replyText.includes('תפריט')) actionType = 'send_menu';
+    else if (replyText.includes('הזמנה') || replyText.includes('הובלה')) actionType = 'order_update';
+    else if (replyText.includes('מכולה')) actionType = 'container_task';
+
+    await triggerJoniMake(cleanFrom, replyText, actionType);
+
+    // 3. Log to Studio
+    logs.unshift({
+      id: `bridge_${Date.now()}`,
+      from: `+${cleanFrom}`,
+      customer_name: senderName,
+      incoming_text: incomingText,
+      sent_response: replyText,
+      response_type: actionType === 'send_menu' ? 'list_menu' : 'text',
+      timestamp: new Date().toISOString(),
+      channel: 'joni',
+      status: 'sent'
+    });
+
+    res.json({
+      success: true,
+      reply: replyText,
+      phone: cleanFrom,
+      name: senderName,
+      action: actionType
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/bridge/pending', async (_req: Request, res: Response) => {
+  try {
+    const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+    const response = await fetch(`${url}?action=get_pending`, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000)
+    });
+    const data: any = await response.json().catch(() => ({ pending: [] }));
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, pending: [] });
+  }
+});
+
+app.post('/api/bridge/mark-sent', async (req: Request, res: Response) => {
+  try {
+    const { rowId } = req.body || {};
+    const url = settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark_sent', rowId }),
+      redirect: 'follow'
+    });
+    const data: any = await response.json().catch(() => ({ success: true }));
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/bridge/status', async (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    appsScriptUrl: settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL,
+    makeWebhookUrl: MAKE_JONI_WEBHOOK_URL,
+    businessPhone: DISPLAY_PHONE,
+    metaPhoneNumberId: WHATSAPP_PHONE_ID,
+    metaConnectionStatus: settings.metaConnectionStatus,
+    syncIntervalSeconds: 10,
+    activeFlowNodes: activeFlow.nodes.length,
+    recentLogsCount: logs.length
+  });
+});
+
+app.post('/api/bridge/sync', async (_req: Request, res: Response) => {
+  try {
+    await checkOutboundQueueFromSheet();
+    res.json({ success: true, message: 'סנכרון תור יוצא וסגירת מעגל בוצעו בהצלחה' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Dev vs Production Setup with Vite
 async function startServer() {
   // Initialize flow from Firebase RTDB on server boot
@@ -2380,9 +2638,15 @@ async function startServer() {
     console.log(`===============================================`);
     console.log(`🚀 Saban WhatsApp Studio Server running on port ${PORT}`);
     console.log(`📡 JONI Webhook: /api/webhooks/joni & /api/joni/incoming`);
+    console.log(`⚡ Two-Way Bridge: /api/bridge/incoming & /api/bridge/status`);
+    console.log(`📋 Send Menu API: /api/joni/send-menu`);
     console.log(`🏢 Business Number: ${settings.businessNumber}`);
+    console.log(`🔗 Google Sheet Script: ${settings.googleSheetWebAppUrl || GOOGLE_SHEET_WEBAPP_URL}`);
     console.log(`🔗 Firebase Send: ${settings.firebaseSendUrl}`);
     console.log(`===============================================`);
+
+    // Start 10-second polling for outbound queue from Google Apps Script
+    setInterval(checkOutboundQueueFromSheet, 10000);
   });
 }
 

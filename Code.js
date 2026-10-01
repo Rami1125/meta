@@ -513,6 +513,36 @@ function doGet(e) {
         break;
       }
 
+      // Outbound pending queue for WhatsApp Web / Node server background dispatch
+      case 'get_pending':
+      case 'getPending': {
+        const sheet = ss.getSheetByName(CONFIG.SHEETS.WHATSAPP_CONVERSATIONS);
+        const pendingList = [];
+        if (sheet && sheet.getLastRow() > 1) {
+          const data = sheet.getDataRange().getValues();
+          for (let i = 1; i < data.length; i++) {
+            const rowStatus = String(data[i][7] || '').trim();
+            if (rowStatus === 'ממתין לשליחה' || rowStatus === 'pending') {
+              pendingList.push({
+                rowId: i + 1,
+                phone: String(data[i][1] || '').trim(),
+                name: String(data[i][2] || 'לקוח').trim(),
+                message: String(data[i][6] || data[i][4] || '').trim(),
+                branch: String(data[i][5] || '').trim(),
+                timestamp: data[i][0]
+              });
+            }
+          }
+        }
+        responseData = {
+          success: true,
+          action: 'get_pending',
+          count: pendingList.length,
+          pending: pendingList
+        };
+        break;
+      }
+
       case 'ping':
       default: {
         responseData = {
@@ -554,11 +584,28 @@ function doPost(e) {
     }
 
     const payload = JSON.parse(e.postData.contents);
-    const action = payload.action || 'insertOrder';
+    // If incoming payload has text and from, treat as WhatsApp message automatically
+    const isDirectWhatsAppMsg = (payload.from || payload.phone) && payload.text;
+    const action = payload.action || (isDirectWhatsAppMsg ? 'incomingMessage' : 'insertOrder');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let result = { success: true };
 
     switch (action) {
+      // 0. קליטת הודעת WhatsApp דו-כיוונית וסגירת מעגל עם מענה נועה AI
+      case 'incomingMessage':
+      case 'whatsapp_message':
+      case 'chat_message': {
+        result = handleIncomingWhatsAppTwoWay(ss, payload);
+        break;
+      }
+
+      // 0.1 סימון שורה בגיליון כ"נשלח בהצלחה" לאחר שיגור בוואטסאפ
+      case 'mark_sent':
+      case 'markSent': {
+        result = handleMarkSent(ss, payload);
+        break;
+      }
+
       // 1. הוספת הזמנת הובלה חדשה לדוח הבוקר
       case 'addOrder':
       case 'insertOrder': {
@@ -705,6 +752,118 @@ function handleUpdateOrder(ss, payload) {
   }
 
   return { success: false, error: 'Order ID not found: ' + orderId };
+}
+
+/**
+ * מחולל מענה חכם ותפריט סבן אוטומטי לוואטסאפ (סגירת מעגל נועה AI)
+ */
+function generateSabanWhatsAppReply(incomingText, customerName) {
+  const text = String(incomingText || '').trim();
+  const lower = text.toLowerCase();
+
+  // בדיקת מערכת
+  if (lower.includes('בדיקה') || text === 'test') {
+    return {
+      reply: 'הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?',
+      branch: 'בדיקת מערכת',
+      action: 'customer_reply'
+    };
+  }
+
+  // 1. הזמנה והובלה
+  if (text === '1' || lower.includes('הובלה') || lower.includes('משלוח') || lower.includes('ברזל') || lower.includes('בלוק') || lower.includes('מלט') || lower.includes('חול') || lower.includes('טון')) {
+    return {
+      reply: '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת מדויקת? נציגנו ראמי מסארווה (050-886-0896) יתאם אספקה מהירה לאתר.',
+      branch: '🚚 הזמנה והובלה לאתר',
+      action: 'order_update'
+    };
+  }
+
+  // 2. איסוף עצמי
+  if (text === '2' || lower.includes('איסוף') || lower.includes('מחסן') || lower.includes('כפר ברא') || lower.includes('שעות')) {
+    return {
+      reply: '🏪 מחסן ח. סבן כפר ברא פתוח בימים א-ה 06:00-17:00, ויום ו 06:30-13:00. שלח פירוט חומרים וראמי יכין לך הכל מראש במזלג!',
+      branch: '🏪 איסוף עצמי',
+      action: 'customer_reply'
+    };
+  }
+
+  // 3. מכולות פסולת
+  if (text === '3' || lower.includes('מכולה') || lower.includes('פסולת') || lower.includes('פינוי')) {
+    return {
+      reply: '🗑️ שירות מכולות פסולת ח. סבן: זמינות מכולות 6, 8 ו-12 קוב להצבה מיידית. אנא ציין כתובת ונפח מבוקש. שים לב שנדרשת גישה פנויה למשאית רמסע 🚛.',
+      branch: '🗑️ מכולות פסולת',
+      action: 'container_task'
+    };
+  }
+
+  // 4. מעקב משלוח
+  if (text === '4' || lower.includes('מעקב') || lower.includes('איפה') || lower.includes('נהג')) {
+    return {
+      reply: '🔍 מעקב משלוחים ח. סבן: נהג מנוף ראמי נמצא בדרכים. לבירור ישיר צלצל עכשיו: 050-886-0896 📞.',
+      branch: '🔍 מעקב משלוח',
+      action: 'customer_reply'
+    };
+  }
+
+  // תפריט ראשי כברירת מחדל (Catch-All)
+  return {
+    reply: 'ח. סבן חומרי בניין 🏗️\nברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:\n1 - 🚚 הזמנה והובלה לאתר\n2 - 🏭 איסוף עצמי ושעות פעילות\n3 - 🗑️ מכולות פסולת (6/8/12 קוב)\n4 - 🔍 מעקב משלוח ונהגים',
+    branch: 'תפריט ראשי סבן',
+    action: 'send_menu'
+  };
+}
+
+/**
+ * טיפול בהודעת WhatsApp נכנסת וסגירת מעגל דו-כיוונית מול הגיליון
+ */
+function handleIncomingWhatsAppTwoWay(ss, payload) {
+  const phone = String(payload.from || payload.phone || '').trim();
+  const name = String(payload.name || payload.customerName || 'לקוח WhatsApp').trim();
+  const text = String(payload.text || payload.incomingMessage || '').trim();
+  const timestamp = payload.timestamp || new Date().toLocaleString('he-IL');
+
+  // יצירת המענה והתפריט החכם של נועה AI
+  const autoResponse = generateSabanWhatsAppReply(text, name);
+
+  // תיעוד השיחה בגיליון שיחות_וואטסאפ_נועה
+  handleLogWhatsApp(ss, {
+    timestamp: timestamp,
+    phone: phone,
+    customerName: name,
+    inquiryType: autoResponse.branch,
+    incomingMessage: text,
+    branchName: autoResponse.branch,
+    sentReply: autoResponse.reply,
+    status: 'טופל בהצלחה'
+  });
+
+  return {
+    success: true,
+    reply: autoResponse.reply,
+    branch: autoResponse.branch,
+    action: autoResponse.action,
+    menuSent: autoResponse.action === 'send_menu',
+    phone: phone,
+    name: name,
+    timestamp: timestamp
+  };
+}
+
+/**
+ * סימון שורה בגיליון כ"נשלח בהצלחה"
+ */
+function handleMarkSent(ss, payload) {
+  const rowId = Number(payload.rowId);
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.WHATSAPP_CONVERSATIONS);
+  if (!sheet) return { success: false, error: 'Sheet not found' };
+
+  if (rowId && rowId > 1 && rowId <= sheet.getLastRow()) {
+    sheet.getRange(rowId, 8).setValue('נשלח בהצלחה ✅');
+    return { success: true, rowId: rowId, status: 'marked_sent' };
+  }
+
+  return { success: false, error: 'Invalid rowId: ' + rowId };
 }
 
 /**
