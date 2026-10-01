@@ -19,7 +19,14 @@ import {
   ZoomIn,
   ZoomOut,
   Smartphone,
-  Wand2
+  Wand2,
+  ListTree,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  ArrowRight,
+  CornerDownLeft
 } from 'lucide-react';
 import { WhatsAppChat } from '../WhatsAppChat';
 import { NoaCanvasCompanion, NoaFlightCommand } from '../Companion/NoaCanvasCompanion';
@@ -226,8 +233,71 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [builderMode, setBuilderMode] = useState<'canvas' | 'outline'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      return 'outline';
+    }
+    return 'outline';
+  });
+  const [mobileExpandedNodeId, setMobileExpandedNodeId] = useState<string | null>('node_welcome');
+  const [mobileSearchQuery, setMobileSearchQuery] = useState('');
   const [zoom, setZoom] = useState(1);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Helper: add a child branch linked directly to a parent option
+  const handleAddChildBranch = (parentNodeId: string, optionIndex?: number) => {
+    const parentNode = flow.nodes.find(n => n.id === parentNodeId);
+    const newId = `node_${Date.now()}`;
+    const newBlock: VisualBlock = {
+      id: newId,
+      type: 'message',
+      title: `ענף המשך: ${parentNode?.title || 'סבן'}`,
+      text: 'שלום! נשמח לתאם עבורך אספקה או מענה ישיר. ראמי מסארווה (050-886-0896) לשירותך 🏗️',
+      position: {
+        x: (parentNode?.position.x || 120) + 360,
+        y: (parentNode?.position.y || 120) + 120
+      }
+    };
+
+    const newConn: VisualConnection = {
+      id: `c_${Date.now()}`,
+      fromNodeId: parentNodeId,
+      fromOptionIndex: optionIndex,
+      toNodeId: newId
+    };
+
+    setFlow(prev => ({
+      ...prev,
+      nodes: [...prev.nodes, newBlock],
+      connections: [...prev.connections, newConn]
+    }));
+    setSelectedBlockId(newId);
+    setMobileExpandedNodeId(newId);
+  };
+
+  // Helper: change connection target for a specific option
+  const handleChangeConnection = (fromNodeId: string, optionIndex: number | undefined, toNodeId: string) => {
+    setFlow(prev => {
+      const filtered = prev.connections.filter(
+        c => !(c.fromNodeId === fromNodeId && c.fromOptionIndex === optionIndex)
+      );
+      if (!toNodeId) {
+        return { ...prev, connections: filtered };
+      }
+      return {
+        ...prev,
+        connections: [
+          ...filtered,
+          {
+            id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            fromNodeId,
+            fromOptionIndex: optionIndex,
+            toNodeId
+          }
+        ]
+      };
+    });
+  };
 
   // Noa Companion Flight Engine State
   const [noaCommand, setNoaCommand] = useState<NoaFlightCommand | null>(null);
@@ -586,69 +656,51 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
     >
       
       {/* Top Action Bar */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-20 shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between z-20 shrink-0">
+        <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-slate-950 font-bold shadow">
             <GitFork className="w-5 h-5 text-slate-950 stroke-[2.4]" />
           </div>
           <div>
-            <h2 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-              <span>בונה ענפים ויזואלי (Visual Branch Builder)</span>
+            <h2 className="font-bold text-xs sm:text-sm text-slate-100 flex items-center gap-1.5">
+              <span>בונה ענפים סבן</span>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                Figma-Canvas
+                {builderMode === 'outline' ? 'מובייל Note 23' : 'Figma-Canvas'}
               </span>
             </h2>
-            <p className="text-[11px] text-slate-400">חבר ענפים, ערוך טקסטים בעברית ושמור ישירות ל-Firebase RTDB</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">
+              {builderMode === 'outline' ? 'ניהול ענפים ותפריטים מותאם ל-S-Pen ואגודל' : 'חבר ענפים, ערוך טקסטים בעברית ושמור'}
+            </p>
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          {/* Zoom controls */}
-          <div className="hidden sm:flex items-center bg-slate-800/80 rounded-xl p-1 border border-slate-700/60 text-xs">
-            <button 
-              onClick={() => setZoom(prev => Math.max(0.6, prev - 0.1))} 
-              className="p-1 hover:text-white text-slate-400 transition-colors"
-              title="הקטן"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="px-2 font-mono text-[11px] text-slate-300">{Math.round(zoom * 100)}%</span>
-            <button 
-              onClick={() => setZoom(prev => Math.min(1.4, prev + 0.1))} 
-              className="p-1 hover:text-white text-slate-400 transition-colors"
-              title="הגדל"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Noa AI Quick Generator Chips */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/80 border border-cyan-500/40 rounded-xl px-2.5 py-1 text-xs shadow-inner">
-            <span className="text-cyan-400 font-bold flex items-center gap-1 text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>נועה AI:</span>
-            </span>
+          {/* Mode Switcher */}
+          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 text-xs shadow-inner">
             <button
-              onClick={() => handleNoaQuickAction('הוסף ענף מחירון חומרי בניין')}
-              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
-              title="פקודה לנועה: יצירת ענף מחירון סבן"
+              onClick={() => setBuilderMode('outline')}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
+                builderMode === 'outline'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="תצוגת ענפים מותאמת לסמסונג נוט ומובייל"
             >
-              + מחירון
+              <ListTree className="w-3.5 h-3.5" />
+              <span>ענפי מובייל</span>
             </button>
             <button
-              onClick={() => handleNoaQuickAction('הוסף ענף מכולות פסולת 8 קוב')}
-              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
-              title="פקודה לנועה: יצירת ענף מכולת פסולת"
+              onClick={() => setBuilderMode('canvas')}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
+                builderMode === 'canvas'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="תצוגת קנבס ויזואלי"
             >
-              + מכולה
-            </button>
-            <button
-              onClick={() => handleNoaQuickAction('הוסף ענף שעות פתיחה כפר ברא')}
-              className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-cyan-950/90 text-[11px] text-slate-200 hover:text-cyan-300 border border-slate-700/80 transition-all active:scale-95"
-              title="פקודה לנועה: שעות פתיחה ומחסן"
-            >
-              + שעות פתיחה
+              <GitFork className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">קנבס ויזואלי</span>
             </button>
           </div>
 
@@ -656,46 +708,414 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
           {onOpenSimulator && (
             <button
               onClick={onOpenSimulator}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-950/80 hover:bg-emerald-900 active:scale-95 text-emerald-200 text-xs font-semibold rounded-xl border border-emerald-600/60 transition-all shadow-sm"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 active:scale-95 text-emerald-200 text-xs font-semibold rounded-xl border border-emerald-600/60 transition-all shadow-sm cursor-pointer"
               title="פתח סימולטור WhatsApp חי לבדיקת התפריט העדכני"
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>סימולטור WhatsApp חי</span>
+              <span>סימולטור חי</span>
             </button>
           )}
-
-          {/* Preview Button */}
-          <button
-            onClick={() => setIsPreviewOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-all shadow-sm"
-          >
-            <Eye className="w-3.5 h-3.5 text-emerald-400" />
-            <span>תצוגה מקדימה בוואטסאפ</span>
-          </button>
 
           {/* Save Button */}
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-orange-600/20"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-orange-600/20 cursor-pointer"
           >
             {saveSuccess ? (
               <>
                 <Check className="w-4 h-4 text-white" />
-                <span>נשמר בהצלחה!</span>
+                <span className="hidden sm:inline">נשמר!</span>
               </>
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>{isSaving ? 'שומר ל-Firebase...' : 'שמור ענפים (/chat_flows/main)'}</span>
+                <span>{isSaving ? 'שומר...' : 'שמור'}</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Main Workspace (Left: Blocks Library, Center: Figma Canvas, Right: Block Inspector) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* Main Workspace: Mobile Tree Outline View vs Desktop Figma Canvas */}
+      {builderMode === 'outline' ? (
+        <div className="flex-1 overflow-y-auto bg-slate-950 p-3 sm:p-5 pb-36 space-y-4 max-w-3xl mx-auto w-full">
+          {/* Samsung Note 23 / Ultra Experience Banner */}
+          <div className="p-3.5 bg-gradient-to-r from-slate-900 via-slate-900/90 to-amber-950/30 rounded-2xl border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="font-bold text-xs sm:text-sm text-white">חבילת עיצוב מובייל סמסונג נוט 23 / S23 Ultra</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                יחס מסך 20:9 · אזור אגודל תחתון (Thumb Zone) · תמיכה ב-S-Pen · ניגודיות שמש מלאה לאתרי בנייה
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20 font-bold">
+                {flow.nodes.length} ענפים
+              </span>
+              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-lg border border-cyan-500/20 font-bold">
+                {flow.connections.length} חיבורים
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Search & Filter */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="חיפוש ענף, מילה או אפשרות (למשל: מלט, מכולה, איסוף)..."
+                value={mobileSearchQuery}
+                onChange={(e) => setMobileSearchQuery(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pr-9 pl-8 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              {mobileSearchQuery && (
+                <button
+                  onClick={() => setMobileSearchQuery('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                const welcomeTmpl = BLOCK_TEMPLATES.find(t => t.type === 'menu') || BLOCK_TEMPLATES[0];
+                handleAddBlock(welcomeTmpl);
+              }}
+              className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 font-bold text-xs rounded-xl flex items-center gap-1.5 shrink-0 active:scale-95 transition-all cursor-pointer min-h-[42px]"
+            >
+              <Plus className="w-4 h-4" />
+              <span>הוסף ענף</span>
+            </button>
+          </div>
+
+          {/* Noa AI Quick Creation Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <span className="text-cyan-400 font-bold text-[11px] shrink-0 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-300" />
+              <span>נועה AI:</span>
+            </span>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף מחירון חומרי בניין')}
+              className="px-2.5 py-1 bg-slate-900 hover:bg-cyan-950/80 text-[11px] text-slate-300 hover:text-cyan-300 border border-slate-800 rounded-xl shrink-0 transition-all active:scale-95 cursor-pointer"
+            >
+              + מחירון קבלנים
+            </button>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף מכולות פסולת 8 קוב')}
+              className="px-2.5 py-1 bg-slate-900 hover:bg-cyan-950/80 text-[11px] text-slate-300 hover:text-cyan-300 border border-slate-800 rounded-xl shrink-0 transition-all active:scale-95 cursor-pointer"
+            >
+              + מכולה 8 קוב
+            </button>
+            <button
+              onClick={() => handleNoaQuickAction('הוסף ענף שעות פתיחה כפר ברא')}
+              className="px-2.5 py-1 bg-slate-900 hover:bg-cyan-950/80 text-[11px] text-slate-300 hover:text-cyan-300 border border-slate-800 rounded-xl shrink-0 transition-all active:scale-95 cursor-pointer"
+            >
+              + שעות פתיחה
+            </button>
+          </div>
+
+          {/* Branch Cards List */}
+          <div className="space-y-3">
+            {flow.nodes
+              .filter(n => {
+                if (!mobileSearchQuery.trim()) return true;
+                const q = mobileSearchQuery.toLowerCase();
+                return (
+                  n.title.toLowerCase().includes(q) ||
+                  n.text.toLowerCase().includes(q) ||
+                  (n.options && n.options.some(opt => opt.toLowerCase().includes(q)))
+                );
+              })
+              .map((node) => {
+                const tmpl = BLOCK_TEMPLATES.find(t => t.type === node.type) || BLOCK_TEMPLATES[0];
+                const Icon = tmpl.icon;
+                const isExpanded = mobileExpandedNodeId === node.id;
+                const isRoot = node.id === 'node_welcome';
+
+                return (
+                  <div
+                    key={node.id}
+                    className={`bg-slate-900/90 border rounded-2xl overflow-hidden transition-all shadow-md ${
+                      isExpanded 
+                        ? 'border-amber-500/80 ring-1 ring-amber-500/20 shadow-amber-500/10' 
+                        : 'border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    {/* Card Header */}
+                    <div
+                      onClick={() => setMobileExpandedNodeId(isExpanded ? null : node.id)}
+                      className="p-3.5 flex items-center justify-between cursor-pointer select-none min-h-[52px]"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${tmpl.color} flex items-center justify-center text-white shrink-0 shadow-sm`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs sm:text-sm text-white truncate">
+                              {node.title}
+                            </span>
+                            {isRoot && (
+                              <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-bold shrink-0">
+                                ענף ראשי 🌟
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate max-w-[240px] sm:max-w-md mt-0.5">
+                            {node.text.split('\n')[0]}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 mr-2">
+                        {node.options && node.options.length > 0 && (
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-lg border border-slate-700 font-mono">
+                            {node.options.length} אפשרויות
+                          </span>
+                        )}
+                        <button
+                          className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                          title={isExpanded ? 'כווץ' : 'הרחב'}
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Card Expanded Content */}
+                    {isExpanded && (
+                      <div className="p-3.5 border-t border-slate-800/80 bg-slate-950/60 space-y-3.5 text-xs">
+                        {/* Title edit */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                            שם הענף (זיהוי פנימי):
+                          </label>
+                          <input
+                            type="text"
+                            value={node.title}
+                            onChange={(e) => {
+                              const newTitle = e.target.value;
+                              setFlow(prev => ({
+                                ...prev,
+                                nodes: prev.nodes.map(n => n.id === node.id ? { ...n, title: newTitle } : n)
+                              }));
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        {/* Text edit */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                            תוכן ההודעה שתישלח ללקוח בוואטסאפ:
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={node.text}
+                            onChange={(e) => {
+                              const newText = e.target.value;
+                              setFlow(prev => ({
+                                ...prev,
+                                nodes: prev.nodes.map(n => n.id === node.id ? { ...n, text: newText } : n)
+                              }));
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500 font-['Assistant',sans-serif] leading-relaxed"
+                            placeholder="כתוב הודעת וואטסאפ בעברית..."
+                          />
+                        </div>
+
+                        {/* Options & branching connections */}
+                        {node.options && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+                                <ListOrdered className="w-3.5 h-3.5" />
+                                <span>אפשרויות בתפריט (הלקוח יבחר במספר או בטקסט):</span>
+                              </label>
+                              <button
+                                onClick={() => {
+                                  const newOpts = [...(node.options || []), `אפשרות ${(node.options?.length || 0) + 1}`];
+                                  setFlow(prev => ({
+                                    ...prev,
+                                    nodes: prev.nodes.map(n => n.id === node.id ? { ...n, options: newOpts } : n)
+                                  }));
+                                }}
+                                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>הוסף אפשרות</span>
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {node.options.map((opt, optIdx) => {
+                                const conn = flow.connections.find(
+                                  c => c.fromNodeId === node.id && c.fromOptionIndex === optIdx
+                                );
+                                const targetNode = conn ? flow.nodes.find(n => n.id === conn.toNodeId) : null;
+
+                                return (
+                                  <div key={optIdx} className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-6 h-6 rounded-md bg-slate-800 text-amber-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                                        {optIdx + 1}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={opt}
+                                        onChange={(e) => {
+                                          const newOpts = [...(node.options || [])];
+                                          newOpts[optIdx] = e.target.value;
+                                          setFlow(prev => ({
+                                            ...prev,
+                                            nodes: prev.nodes.map(n => n.id === node.id ? { ...n, options: newOpts } : n)
+                                          }));
+                                        }}
+                                        className="flex-1 bg-slate-950 border border-slate-700/70 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const newOpts = (node.options || []).filter((_, idx) => idx !== optIdx);
+                                          setFlow(prev => ({
+                                            ...prev,
+                                            nodes: prev.nodes.map(n => n.id === node.id ? { ...n, options: newOpts } : n),
+                                            connections: prev.connections.filter(c => !(c.fromNodeId === node.id && c.fromOptionIndex === optIdx))
+                                          }));
+                                        }}
+                                        className="p-1 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                        title="הסר אפשרות"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Branch Target selector */}
+                                    <div className="flex items-center gap-2 text-[11px] bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+                                      <CornerDownLeft className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                      <span className="text-slate-400 shrink-0">מנווט אל:</span>
+                                      <select
+                                        value={targetNode ? targetNode.id : ''}
+                                        onChange={(e) => handleChangeConnection(node.id, optIdx, e.target.value)}
+                                        className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-emerald-300 font-semibold focus:outline-none"
+                                      >
+                                        <option value="">-- בחר ענף יעד --</option>
+                                        {flow.nodes
+                                          .filter(n => n.id !== node.id)
+                                          .map(n => (
+                                            <option key={n.id} value={n.id}>
+                                              {n.title} ({n.type})
+                                            </option>
+                                          ))}
+                                      </select>
+
+                                      <button
+                                        onClick={() => handleAddChildBranch(node.id, optIdx)}
+                                        className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-[10px] rounded-md border border-amber-500/40 shrink-0 active:scale-95 cursor-pointer"
+                                        title="צור ענף חדש עבור אפשרות זו"
+                                      >
+                                        + ענף חדש
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Bottom card action buttons */}
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleAddChildBranch(node.id)}
+                              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-semibold rounded-xl text-[11px] flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer min-h-[36px]"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>הוסף ענף המשך תחתיו</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedBlockId(node.id);
+                                setIsPreviewOpen(true);
+                              }}
+                              className="px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 font-semibold rounded-xl text-[11px] flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer min-h-[36px]"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>בדוק ב-WhatsApp</span>
+                            </button>
+                          </div>
+
+                          {!isRoot && (
+                            <button
+                              onClick={() => handleDeleteBlock(node.id)}
+                              className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                              title="מחק ענף"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Floating Thumb Zone Action Sheet (Fixed at bottom for Samsung Note 23 / Ultra 20:9 screens) */}
+          <div className="fixed bottom-4 inset-x-4 max-w-lg mx-auto z-40 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-2.5 shadow-2xl flex items-center justify-between gap-2">
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer min-h-[48px]"
+            >
+              {saveSuccess ? (
+                <>
+                  <Check className="w-4 h-4 text-white" />
+                  <span>נשמר בהצלחה ב-Firebase!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>{isSaving ? 'שומר ענפים...' : 'שמור שינויים (/chat_flows/main)'}</span>
+                </>
+              )}
+            </button>
+
+            {onOpenSimulator && (
+              <button
+                onClick={onOpenSimulator}
+                className="px-4 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-slate-700 shadow transition-all cursor-pointer min-h-[48px]"
+                title="סימולטור WhatsApp חי"
+              >
+                <Smartphone className="w-4 h-4 text-emerald-400" />
+                <span>סימולטור חי</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const menuTmpl = BLOCK_TEMPLATES.find(t => t.type === 'menu') || BLOCK_TEMPLATES[0];
+                handleAddBlock(menuTmpl);
+              }}
+              className="px-3.5 py-3 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow-md shadow-amber-500/20 transition-all cursor-pointer min-h-[48px]"
+              title="הוסף ענף תפריט חדש"
+            >
+              <Plus className="w-4 h-4" />
+              <span>ענף חדש</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Main Workspace: Figma Canvas */
+        <div className="flex-1 flex overflow-hidden relative">
 
         {/* 1. Left Sidebar: Blocks Library (ספריית בלוקים) */}
         <div className="w-64 bg-slate-900/90 border-l border-slate-800 p-3 flex flex-col gap-3 shrink-0 overflow-y-auto z-10">
@@ -1243,6 +1663,7 @@ export const VisualBranchBuilder: React.FC<VisualBranchBuilderProps> = ({
         )}
 
       </div>
+      )}
 
       {/* WhatsApp Live Preview Modal */}
       {isPreviewOpen && (
