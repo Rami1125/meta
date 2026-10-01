@@ -194,7 +194,7 @@ export const NoaCanvasCompanion: React.FC<NoaCanvasCompanionProps> = ({
         animate={{
           x: activeX,
           y: activeY,
-          rotate: noaState === 'flying' ? 12 : noaState === 'casting' ? [0, 18, -18, 0] : 0,
+          rotate: noaState === 'flying' ? 12 : 0,
           scale: noaState === 'casting' ? 1.25 : 1
         }}
         transition={{
@@ -204,15 +204,26 @@ export const NoaCanvasCompanion: React.FC<NoaCanvasCompanionProps> = ({
           mass: 0.9
         }}
       >
-        {/* Floating Idle Bobbing Animation (Layered Inside Spring) */}
+        {/* Floating Idle Bobbing & Casting Wiggle (Layered Tween inside Spring container) */}
         <motion.div
-          animate={noaState === 'idle' ? {
-            y: [0, -10, 0],
-            rotate: [-2, 2, -2]
-          } : {}}
+          animate={
+            noaState === 'idle'
+              ? {
+                  y: [0, -10, 0],
+                  rotate: [-2, 2, -2]
+                }
+              : noaState === 'casting'
+                ? {
+                    rotate: [0, 18, -18, 0]
+                  }
+                : {
+                    y: 0,
+                    rotate: 0
+                  }
+          }
           transition={{
-            duration: 3.2,
-            repeat: Infinity,
+            duration: noaState === 'casting' ? 0.5 : 3.2,
+            repeat: noaState === 'casting' ? 2 : Infinity,
             ease: 'easeInOut'
           }}
           className="relative group cursor-pointer"
