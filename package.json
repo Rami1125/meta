@@ -7,7 +7,9 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "tsx server.ts",
-    "bridge": "node whatsapp-web.js",
+    "bridge": "node whatsapp_bridge.mjs",
+    "bridge:mjs": "node whatsapp_bridge.mjs",
+    "bridge:cjs": "node whatsapp_bridge.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

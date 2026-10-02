@@ -290,21 +290,29 @@ async function sendToGoogleSheets(payload: Record<string, unknown>): Promise<any
   }
 }
 
-const FALLBACK_WELCOME_TEXT = `ח. סבן חומרי בניין 🏗️
+// Helper: Generate dynamic welcome text based on the live root branch node in Firebase / Visual Builder
+function getDynamicWelcomeText(): string {
+  const rootNode = (visualChatFlow && Array.isArray(visualChatFlow.nodes) && visualChatFlow.nodes.find((n: any) => n.id === 'node_welcome' || n.isRoot))
+    || (activeFlow && Array.isArray(activeFlow.nodes) && activeFlow.nodes.find(n => n.id === activeFlow.rootBlockId || n.isRoot))
+    || null;
 
-ברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:
+  if (rootNode) {
+    const header = rootNode.title || 'ח. סבן חומרי בניין 🏗️';
+    const body = rootNode.text || (rootNode.data && rootNode.data.body) || 'ברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:';
+    const rawOptions = rootNode.options || (rootNode.data && rootNode.data.rows && rootNode.data.rows.map((r: any) => r.title)) || [];
+    let optsText = '';
+    if (Array.isArray(rawOptions) && rawOptions.length > 0) {
+      optsText = '\n\n' + rawOptions.map((opt: string, i: number) => `${i + 1} - ${opt}`).join('\n');
+    }
+    return `${header}\n\n${body}${optsText}`;
+  }
 
-1 - 🚚 הזמנה והובלה לאתר
-
-2 - 🏭 איסוף עצמי ושעות פעילות
-
-3 - 🗑️ מכולות פסולת (6/8/12 קוב)
-
-4 - 🔍 מעקב משלוח ונהגים`;
+  return `ח. סבן חומרי בניין 🏗️\n\nברוכים הבאים למרכז ההזמנות! הקלד מספר לבחירה:\n\n1 - 🚚 הזמנה והובלה לאתר\n\n2 - 🏭 איסוף עצמי ושעות פעילות\n\n3 - 🗑️ מכולות פסולת\n\n4 - 🔍 מעקב משלוח ונהגים`;
+}
 
 // Helper: Dispatch Meta Cloud API Interactive List
 async function sendMetaInteractiveList(to: string, listData: ListMenuData): Promise<{ success: boolean; fallbackText?: string; messageId?: string }> {
-  const fallbackText = FALLBACK_WELCOME_TEXT;
+  const fallbackText = getDynamicWelcomeText();
 
   const phoneId = WHATSAPP_PHONE_ID || settings.metaPhoneNumberId;
   const token = WHATSAPP_TOKEN || settings.metaAccessToken;
@@ -1225,72 +1233,65 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
     let flowTitle = 'מענה AI סבן';
     let chosenBranchId = selectedId || '';
 
-    const flows: Record<string, { text: string; next: string; title: string }> = {
-      order_delivery: {
-        text: "🚚 מעולה! איזה חומר צריך?\n1️⃣ ברזל\n2️⃣ בלוקים\n3️⃣ מלט\n4️⃣ חול/חצץ",
-        next: "await_material",
-        title: "🚚 הזמנה והובלה"
-      },
-      self_pickup: {
-        text: "🏪 איסוף עצמי מהמחסן בכפר ברא.\nשלח מיקום או כתוב מה להכין לך?",
-        next: "await_pickup_details",
-        title: "🏪 איסוף עצמי"
-      },
-      waste_container: {
-        text: "🗑️ שירות מכולות פסולת - ח. סבן\nאיזה סוג פעולה למכולה נדרש באתר?\n\n1️⃣ 📍 הצבה חדשה (הבאת מכולה ריקה לאתר)\n2️⃣ 🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)\n3️⃣ 🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)",
-        next: "await_container_action",
-        title: "🗑️ שירות מכולות פסולת - ח. סבן"
-      },
-      container_action_menu: {
-        text: "🗑️ שירות מכולות פסולת - ח. סבן\nאיזה סוג פעולה למכולה נדרש באתר?\n\n1️⃣ 📍 הצבה חדשה (הבאת מכולה ריקה לאתר)\n2️⃣ 🔄 החלפה (הוצאת מכולה מלאה והצבת ריקה)\n3️⃣ 🚛 הוצאה ופינוי (פינוי סופי של המכולה וסגירת האתר)",
-        next: "await_container_action",
-        title: "🗑️ שירות מכולות פסולת - ח. סבן"
-      },
-      container_place_new: {
-        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
-        next: "await_container_size",
-        title: "📦 בחירת נפח המכולה"
-      },
-      container_swap: {
-        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
-        next: "await_container_size",
-        title: "📦 בחירת נפח המכולה"
-      },
-      container_remove: {
-        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
-        next: "await_container_size",
-        title: "📦 בחירת נפח המכולה"
-      },
-      container_size_menu: {
-        text: "אנא בחר את גודל המכולה המבוקש:\n\n⚠️ דגש תפעולי: נדרשת גישה פנויה ורחבה למשאית רמסע לצורך הנפה ופריקה.\n\n1️⃣ 📦 6 קוב (מתאים לשיפוץ קל ודירות)\n2️⃣ 📦 8 קוב (מתאים לפסולת כבדה, בלוקים ובטון)\n3️⃣ 📦 12 קוב (מתאים לפסולת עץ, גבס ונפח גדול)",
-        next: "await_container_size",
-        title: "📦 בחירת נפח המכולה"
-      },
-      container_size_6: {
-        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
-        next: "await_container_site_details",
-        title: "📍 איסוף פרטי אתר מכולה"
-      },
-      container_size_8: {
-        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
-        next: "await_container_site_details",
-        title: "📍 איסוף פרטי אתר מכולה"
-      },
-      container_size_12: {
-        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
-        next: "await_container_site_details",
-        title: "📍 איסוף פרטי אתר מכולה"
-      },
-      container_site_details: {
-        text: "מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.",
-        next: "await_container_site_details",
-        title: "📍 איסוף פרטי אתר מכולה"
-      },
-      track_order: {
-        text: "📍 שלח מספר הזמנה ואבדוק לך מיד",
-        next: "await_tracking",
-        title: "📍 מעקב משלוח"
+    const getDynamicBranch = (nodeIdOrAlias: string): { text: string; title: string; next?: string } | null => {
+      const aliasMap: Record<string, string> = {
+        delivery: 'node_delivery',
+        order_delivery: 'node_delivery',
+        pickup: 'node_pickup',
+        self_pickup: 'node_pickup',
+        containers: 'container_action_menu',
+        waste_container: 'container_action_menu',
+        container_place_new: 'container_size_menu',
+        container_swap: 'container_size_menu',
+        container_remove: 'container_size_menu',
+        container_size_6: 'container_site_details',
+        container_size_8: 'container_site_details',
+        container_size_12: 'container_site_details',
+        tracking: 'tracking_reply',
+        track_order: 'tracking_reply'
+      };
+
+      const targetId = aliasMap[nodeIdOrAlias] || nodeIdOrAlias;
+
+      // 1. Look in visualChatFlow nodes (live from Firebase & UI edits!)
+      if (visualChatFlow && Array.isArray(visualChatFlow.nodes)) {
+        const vNode = visualChatFlow.nodes.find((n: any) => n.id === targetId || n.id === nodeIdOrAlias);
+        if (vNode) {
+          let text = vNode.text || '';
+          if (Array.isArray(vNode.options) && vNode.options.length > 0) {
+            text += '\n\n' + vNode.options.map((opt: string, i: number) => `${i + 1}️⃣ ${opt}`).join('\n');
+          }
+          return {
+            text,
+            title: vNode.title || 'ענף סבן',
+            next: vNode.type === 'menu' ? `await_${vNode.id}` : undefined
+          };
+        }
       }
+
+      // 2. Look in activeFlow nodes
+      if (activeFlow && Array.isArray(activeFlow.nodes)) {
+        const aNode = activeFlow.nodes.find(n => n.id === targetId || n.id === nodeIdOrAlias);
+        if (aNode) {
+          let text = '';
+          if (aNode.data.type === 'list_menu') {
+            const d = aNode.data as ListMenuData;
+            text = d.body || d.header || '';
+            if (Array.isArray(d.rows) && d.rows.length > 0) {
+              text += '\n\n' + d.rows.map((r, i) => `${i + 1}️⃣ ${r.title}`).join('\n');
+            }
+          } else if (aNode.data.type === 'text') {
+            text = (aNode.data as any).text || '';
+          }
+          return {
+            text,
+            title: aNode.title,
+            next: aNode.data.type === 'list_menu' ? `await_${aNode.id}` : undefined
+          };
+        }
+      }
+
+      return null;
     };
 
     const normalizedId = selectedId === 'delivery' ? 'order_delivery'
@@ -1301,35 +1302,37 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
 
     const currentSession = userSessions.get(String(cleanPayload.from).replace(/[^0-9]/g, ''));
 
-    if (normalizedId && flows[normalizedId]) {
-      console.log("MENU SELECTED:", normalizedId);
-      const flow = flows[normalizedId];
-      replyText = flow.text;
-      flowTitle = flow.title;
+    const dynamicFlow = normalizedId ? getDynamicBranch(normalizedId) : null;
+    if (dynamicFlow) {
+      console.log("DYNAMIC MENU SELECTED:", normalizedId);
+      replyText = dynamicFlow.text;
+      flowTitle = dynamicFlow.title;
       chosenBranchId = normalizedId;
-      await updateSession(cleanPayload.from, { step: flow.next, lastChoice: normalizedId });
-    } else if (currentSession && currentSession.step && currentSession.step.startsWith('await_container')) {
-      if (currentSession.step === 'await_container_action') {
+      await updateSession(cleanPayload.from, { step: dynamicFlow.next || 'completed', lastChoice: normalizedId });
+    } else if (currentSession && currentSession.step && (currentSession.step.startsWith('await_container') || currentSession.step.includes('container'))) {
+      if (currentSession.step.includes('action')) {
         let action = 'הצבה חדשה';
         const t = cleanPayload.text.toLowerCase();
         if (t.includes('החלפה') || t === '2') action = 'החלפה';
         else if (t.includes('פינוי') || t.includes('הוצאה') || t === '3') action = 'הוצאה ופינוי';
 
-        replyText = flows.container_size_menu.text;
-        flowTitle = flows.container_size_menu.title;
+        const sizeNode = getDynamicBranch('container_size_menu');
+        replyText = sizeNode ? sizeNode.text : 'אנא בחר את סוג המכולה המבוקש:\n\n1️⃣ 📦 הצבה\n2️⃣ 📦 החלפה\n3️⃣ 📦 הוצאה';
+        flowTitle = sizeNode ? sizeNode.title : '📦 בחירת סוג פעולה למכולה';
         chosenBranchId = 'container_size_menu';
         await updateSession(cleanPayload.from, { step: 'await_container_size', lastChoice: 'container_size_menu', containerAction: action });
-      } else if (currentSession.step === 'await_container_size') {
+      } else if (currentSession.step.includes('size')) {
         let size = '8 קוב';
         const t = cleanPayload.text.toLowerCase();
         if (t.includes('6') || t === '1') size = '6 קוב';
         else if (t.includes('12') || t === '3') size = '12 קוב';
 
-        replyText = flows.container_site_details.text;
-        flowTitle = flows.container_site_details.title;
+        const siteNode = getDynamicBranch('container_site_details');
+        replyText = siteNode ? siteNode.text : 'מעולה! אנא רשום לי בהודעה: כתובת האספקה המדויקת (עיר ורחוב), איש קשר באתר, ותאריך/שעה מבוקשים.';
+        flowTitle = siteNode ? siteNode.title : '📍 איסוף פרטי אתר מכולה';
         chosenBranchId = 'container_site_details';
         await updateSession(cleanPayload.from, { step: 'await_container_site_details', lastChoice: 'container_site_details', containerSize: size });
-      } else if (currentSession.step === 'await_container_site_details') {
+      } else if (currentSession.step.includes('site') || currentSession.step.includes('details')) {
         const action = currentSession.containerAction || 'הצבה חדשה';
         const size = currentSession.containerSize || '8 קוב';
         const address = cleanPayload.text;
@@ -1402,14 +1405,15 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
           '4': 'track_order'
         };
         const mappedId = idMap[trimmed];
-        replyText = flows[mappedId].text;
-        flowTitle = flows[mappedId].title;
+        const dynamicBranch = getDynamicBranch(mappedId);
+        replyText = dynamicBranch ? dynamicBranch.text : 'פנייתך התקבלה בח. סבן';
+        flowTitle = dynamicBranch ? dynamicBranch.title : 'ענף סבן';
         chosenBranchId = mappedId;
-        await updateSession(cleanPayload.from, { step: flows[mappedId].next, lastChoice: mappedId });
+        await updateSession(cleanPayload.from, { step: dynamicBranch?.next || 'completed', lastChoice: mappedId });
       } else {
         // Global Catch-All Default: Any incoming message to +972508860896 receives welcome_menu
-        console.log(`[Global Catch-All Trigger] Dispatching welcome menu to ${cleanPayload.from}...`);
-        replyText = FALLBACK_WELCOME_TEXT;
+        console.log(`[Global Catch-All Trigger] Dispatching dynamic welcome menu to ${cleanPayload.from}...`);
+        replyText = getDynamicWelcomeText();
         flowTitle = 'תפריט ראשי סבן (Catch-All)';
         chosenBranchId = 'welcome_menu';
         await updateSession(cleanPayload.from, { step: 'welcome_menu', lastChoice: 'welcome_menu' });
@@ -2449,9 +2453,10 @@ app.post(['/api/joni/send-menu', '/api/whatsapp/send-menu'], async (req: Request
     if (target.startsWith('05')) target = '972' + target.slice(1);
     if (!target) target = '972508860896';
 
+    const dynamicWelcome = getDynamicWelcomeText();
     const menuText = customNote 
-      ? `${customNote}\n\n${FALLBACK_WELCOME_TEXT}`
-      : FALLBACK_WELCOME_TEXT;
+      ? `${customNote}\n\n${dynamicWelcome}`
+      : dynamicWelcome;
 
     // 1. Send via WhatsApp Text / Cloud API
     const sendResult = await sendWhatsAppText(target, menuText);
@@ -2605,7 +2610,7 @@ app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
       } else if (lower.includes('בדיקה') || incomingText === 'test') {
         replyText = 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?';
       } else {
-        replyText = FALLBACK_WELCOME_TEXT;
+        replyText = getDynamicWelcomeText();
       }
     }
 

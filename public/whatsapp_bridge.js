@@ -5,19 +5,17 @@
  * קובץ: whatsapp_bridge.js / whatsapp_bridge.cjs
  * 
  * תפקיד:
- * 1. מאזין לכל הודעת וואטסאפ נכנסת ומשקף אותה מיד בצ'אט הסטודיו דרך Firebase RTDB.
- * 2. מזהה הזמנות חומרי בניין, כמויות וכתובות, ומספק מענה מדויק ומקצועי.
- * 3. מאזין לתור ההודעות היוצא: כל מענה שנכתב בממשק הצ'אט נמשך מ-Firebase ונוחת מיד בוואטסאפ של הלקוח!
+ * 1. סנכרון חי בזמן אמת מול ענפי השיחה ב-Firebase RTDB ובשרת סבן!
+ * 2. מאזין לכל הודעת וואטסאפ נכנסת ומשקף אותה מיד בצ'אט הסטודיו דרך Firebase RTDB.
+ * 3. מזהה בחירות תפריט, כמויות, חומרי בניין וכתובות באופן דינמי לפי מה שהוגדר בענפים!
+ * 4. מאזין לתור ההודעות היוצא: כל מענה שנכתב בממשק הצ'אט נמשך מ-Firebase ונוחת מיד בוואטסאפ של הלקוח!
  * 
  * הפעלה בתיקייה C:\noa:
- * node whatsapp_bridge.cjs
- * או:
  * node whatsapp_bridge.js
+ * או:
+ * node whatsapp_bridge.cjs
  * ==============================================================================
  */
-
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
 
 const express = require('express');
 const cors = require('cors');
@@ -40,12 +38,58 @@ const PORT = process.env.BRIDGE_PORT || 3001;
 
 // כתובות שירות הענן של סבן (פתוחות וישירות מכל מקום בעולם ללא צורך ב-localhost)
 const FIREBASE_RTDB_URL = 'https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app';
+const STUDIO_WEBHOOK_URL = 'https://ais-dev-neh5cjw2tq37sjrtzdnrcq-812919982163.europe-west2.run.app/api/webhooks/joni';
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwAkBK1Z051WmTvyDsRNrUf3xAS0MOCio9QRdoGyYxQdN66AekWhG_YFAgmKNEl7mR_/exec';
 
 let latestQrCode = null;
 let latestQrDataUrl = null;
 let isClientReady = false;
 let connectedUserPhone = null;
+
+// מעקב סשן של לקוחות עבור עץ הענפים
+const userSessions = new Map();
+
+// מטמון ענפים חי מ-Firebase RTDB (מתרענן אוטומטית)
+let cachedVisualFlow = null;
+let lastFlowFetchTime = 0;
+
+async function getLiveFlow() {
+  const now = Date.now();
+  if (cachedVisualFlow && now - lastFlowFetchTime < 3000) {
+    return cachedVisualFlow;
+  }
+
+  try {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/chat_flows/main.json`, {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.nodes) {
+        let nodes = data.nodes;
+        if (typeof nodes === 'object' && !Array.isArray(nodes)) {
+          nodes = Object.values(nodes);
+        }
+        let connections = data.connections;
+        if (typeof connections === 'object' && !Array.isArray(connections)) {
+          connections = Object.values(connections);
+        }
+        if (Array.isArray(nodes) && nodes.length > 0) {
+          cachedVisualFlow = {
+            ...data,
+            nodes,
+            connections: connections || []
+          };
+          lastFlowFetchTime = now;
+          return cachedVisualFlow;
+        }
+      }
+    }
+  } catch (e) {
+    // network warning
+  }
+  return cachedVisualFlow;
+}
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
@@ -93,6 +137,9 @@ client.on('ready', () => {
   console.log('⚡ סנכרון דו-כיווני פעיל: WhatsApp ⇄ Studio Chat ⇄ Google Sheets');
   console.log('======================================================\n');
 
+  // טעינת ענפים ראשונית
+  getLiveFlow().catch(() => {});
+
   // בדיקת תור הודעות יוצא מ-Firebase (כל מענה שנכתב בממשק הצ'אט) כל 2 שניות
   setInterval(checkOutboundFirebaseQueue, 2000);
 });
@@ -102,40 +149,112 @@ client.on('disconnected', (reason) => {
   console.log('⚠️ הוואטסאפ התנתק:', reason);
 });
 
-// פונקציית מענה חכמה לפי תוכן ההודעה
-function generateContextualReply(text, senderName) {
+// פונקציית מענה דינמית בזמן אמת לפי עץ הענפים ב-Firebase
+async function generateContextualReply(text, senderName, senderPhone) {
   const clean = (text || '').trim();
   const lower = clean.toLowerCase();
+  const flow = await getLiveFlow();
 
-  // 1. זיהוי הזמנה קונקרטית עם חומרים / כמויות / כתובת
+  // 1. זיהוי הזמנה קונקרטית עם חומרים / כמויות / כתובת (עקיפה חכמה ישירה להזמנה)
   const hasMaterials = lower.includes('טיט') || lower.includes('מלט') || lower.includes('בלוק') || lower.includes('חול') || lower.includes('סומסום') || lower.includes('ברזל') || lower.includes('שקים') || lower.includes('בלה');
   const hasAddress = lower.includes('רחוב') || lower.includes('רעננה') || lower.includes('כפר סבא') || lower.includes('הוד השרון') || lower.includes('פתח תקווה') || lower.includes('הרצליה') || lower.includes('כפר ברא') || lower.includes('ג\'לג\'וליה') || lower.includes('טייבה') || lower.includes('טירה') || /\d+/.test(clean);
 
   if (hasMaterials) {
+    userSessions.delete(senderPhone);
     if (hasAddress) {
       return `רשמנו את פרטי ההזמנה שלך: "${clean}" 🚚!\nההזמנה הועברה לראמי מסארווה (050-886-0896) לתיאום משאית מנוף ואספקה מהירה לאתר. תודה שפנית לח. סבן!`;
     }
     return `מעולה! קיבלנו את פירוט החומרים: "${clean}" 🏗️.\nלאיזו כתובת מדויקת תרצה את המשלוח? ראמי מסארווה (050-886-0896) יתאם אספקה מהירה.`;
   }
 
-  // 2. בחירה לפי מספרים מתפריט סבן
-  if (clean === '1' || lower.includes('הובלה') || lower.includes('הזמנה')) {
-    return '🚚 שירות הובלות ואספקה לאתר ח. סבן: ברזל, בלוקים, מלט, טיט, חול/סומסום במנוף.\nאנא שלח לנו כמויות מבוקשות וכתובת אספקה, וראמי מסארווה (050-886-0896) יחזור אליך עם הצעה ומועד פריקה!';
+  // 2. אם יש עץ ענפים דינמי ב-Firebase:
+  if (flow && Array.isArray(flow.nodes) && flow.nodes.length > 0) {
+    const rootNode = flow.nodes.find(n => n.id === 'node_welcome' || n.isRoot) || flow.nodes[0];
+    const session = userSessions.get(senderPhone);
+
+    // בדיקה אם הלקוח כבר נמצא בענף קודם (למשל מכולה, איסוף וכו')
+    if (session && session.currentNodeId) {
+      const currentNode = flow.nodes.find(n => n.id === session.currentNodeId);
+      if (currentNode) {
+        // בדיקת בחירה במספר מתוך אפשרויות הענף הנוכחי
+        const numMatch = clean.match(/^([1-9])$/);
+        let chosenIndex = -1;
+        if (numMatch) {
+          chosenIndex = parseInt(numMatch[1], 10) - 1;
+        } else if (Array.isArray(currentNode.options)) {
+          chosenIndex = currentNode.options.findIndex(opt => lower.includes(opt.toLowerCase()) || opt.toLowerCase().includes(lower));
+        }
+
+        if (chosenIndex >= 0 && Array.isArray(flow.connections)) {
+          // מציאת חיבור הענף ליעד הבא
+          const conn = flow.connections.find(c => c.fromNodeId === currentNode.id && c.fromOptionIndex === chosenIndex);
+          if (conn) {
+            const nextNode = flow.nodes.find(n => n.id === conn.toNodeId);
+            if (nextNode) {
+              userSessions.set(senderPhone, { currentNodeId: nextNode.id, lastTime: Date.now() });
+              let reply = nextNode.text || '';
+              if (Array.isArray(nextNode.options) && nextNode.options.length > 0) {
+                reply += '\n\n' + nextNode.options.map((opt, i) => `${i + 1} - ${opt}`).join('\n');
+              }
+              return reply;
+            }
+          }
+        }
+      }
+    }
+
+    // בחירה מתפריט השורש הראשי (1, 2, 3, 4 או טקסט)
+    const numMatch = clean.match(/^([1-9])$/);
+    let chosenOptionIndex = -1;
+    if (numMatch) {
+      chosenOptionIndex = parseInt(numMatch[1], 10) - 1;
+    } else if (Array.isArray(rootNode.options)) {
+      if (lower.includes('הובלה') || lower.includes('הזמנה')) chosenOptionIndex = 0;
+      else if (lower.includes('איסוף') || lower.includes('מחסן')) chosenOptionIndex = 1;
+      else if (lower.includes('מכולה') || lower.includes('פסולת') || lower.includes('רמסע')) chosenOptionIndex = 2;
+      else if (lower.includes('מעקב') || lower.includes('נהג')) chosenOptionIndex = 3;
+      else {
+        chosenOptionIndex = rootNode.options.findIndex(opt => lower.includes(opt.toLowerCase()) || opt.toLowerCase().includes(lower));
+      }
+    }
+
+    if (chosenOptionIndex >= 0 && Array.isArray(rootNode.options) && rootNode.options[chosenOptionIndex]) {
+      // מציאת חיבור הענף מתפריט השורש
+      const conn = Array.isArray(flow.connections) 
+        ? flow.connections.find(c => c.fromNodeId === rootNode.id && c.fromOptionIndex === chosenOptionIndex)
+        : null;
+
+      let targetNode = conn ? flow.nodes.find(n => n.id === conn.toNodeId) : null;
+
+      // גיבוי זיהוי מזהים לפי אינדקס אם אין חיבור ישיר
+      if (!targetNode) {
+        if (chosenOptionIndex === 0) targetNode = flow.nodes.find(n => n.id === 'node_delivery');
+        else if (chosenOptionIndex === 1) targetNode = flow.nodes.find(n => n.id === 'node_pickup');
+        else if (chosenOptionIndex === 2) targetNode = flow.nodes.find(n => n.id === 'container_action_menu' || n.id === 'container_size_menu');
+        else if (chosenOptionIndex === 3) targetNode = flow.nodes.find(n => n.id === 'tracking_reply');
+      }
+
+      if (targetNode) {
+        userSessions.set(senderPhone, { currentNodeId: targetNode.id, lastTime: Date.now() });
+        let reply = targetNode.text || '';
+        if (Array.isArray(targetNode.options) && targetNode.options.length > 0) {
+          reply += '\n\n' + targetNode.options.map((opt, i) => `${i + 1} - ${opt}`).join('\n');
+        }
+        return reply;
+      }
+    }
+
+    // תפריט שורש דינמי מלא לפי מה שהמשתמש הגדיר בענף הראשי!
+    userSessions.set(senderPhone, { currentNodeId: rootNode.id, lastTime: Date.now() });
+    let rootMenuText = `שלום ${senderName || ''} וברוכים הבאים ל${flow.name || 'ח. סבן חומרי בניין'} 🏗️\n${rootNode.text}\n\n`;
+    if (Array.isArray(rootNode.options) && rootNode.options.length > 0) {
+      rootMenuText += rootNode.options.map((opt, i) => `${i + 1} - ${opt}`).join('\n');
+    }
+    rootMenuText += '\n\nאו פשוט כתוב לנו מה החומרים והכמויות הדרושים!';
+    return rootMenuText;
   }
 
-  if (clean === '2' || lower.includes('איסוף') || lower.includes('מחסן')) {
-    return '🏪 מחסן ח. סבן כפר ברא פתוח בימים א-ה 06:00-17:00, ויום ו 06:30-13:00.\nניתן להגיע לאיסוף עצמי מיידי של כל חומרי הבניין. לתיאום: 050-886-0896 (ראמי).';
-  }
-
-  if (clean === '3' || lower.includes('מכולה') || lower.includes('פסולת')) {
-    return '🗑️ מכולות לפינוי פסולת בניין ח. סבן (6, 8 ו-12 קוב להצבה מיידית).\nאנא ציין כתובת ונפח מבוקש. שים לב שנדרשת גישה פנויה למשאית רמסע 🚛. טלפון לתיאום: 050-886-0896.';
-  }
-
-  if (clean === '4' || lower.includes('מעקב') || lower.includes('נהג')) {
-    return '🔍 מעקב משלוחים ח. סבן: נהג מנוף ראמי נמצא בדרכים. לבירור ישיר צלצל עכשיו: 050-886-0896 📞.';
-  }
-
-  // 3. תפריט ברירת מחדל
+  // 3. ברירת מחדל אם Firebase לא נגיש
   return `שלום ${senderName || ''} וברוכים הבאים לח. סבן חומרי בניין בע״מ (כפר ברא) 🏗️\nאנא הקלד מספר לבחירה:\n1 - 🚚 הזמנה והובלה לאתר\n2 - 🏪 איסוף עצמי ושעות פעילות\n3 - 🗑️ מכולה לפינוי פסולת\n4 - 🔍 מעקב משלוח ונהגים\nאו פשוט כתוב לנו מה החומרים והכמויות הדרושים!`;
 }
 
@@ -161,10 +280,23 @@ client.on('message', async (msg) => {
 
   console.log(`\n📩 הודעה נכנסת מוואטסאפ: ${senderName} (${senderPhone}): "${msg.body}"`);
 
-  // חישוב מענה
-  const replyText = generateContextualReply(msg.body, senderName);
+  // 1. חישוב מענה דינמי בזמן אמת מהענפים
+  const replyText = await generateContextualReply(msg.body, senderName, senderPhone);
 
-  // 1. שיקוף מיידי ב-Firebase RTDB (כך שההודעה קופצת מיד בצ'אט הסטודיו!)
+  // 2. שליחה ל-Webhook של הסטודיו (כדי שיסונכרן למשימות, CRM ולוגים בענן)
+  fetch(STUDIO_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: senderPhone,
+      customerName: senderName,
+      text: msg.body,
+      timestamp: Date.now()
+    }),
+    signal: AbortSignal.timeout(6000)
+  }).catch(() => {});
+
+  // 3. שיקוף מיידי ב-Firebase RTDB (כך שההודעה קופצת מיד בצ'אט הסטודיו!)
   try {
     const fbRes = await fetch(`${FIREBASE_RTDB_URL}/joni/incoming.json`, {
       method: 'POST',
@@ -186,7 +318,7 @@ client.on('message', async (msg) => {
     console.warn('⚠️ שגיאה בעדכון Firebase:', fbErr.message);
   }
 
-  // 2. תיעוד ב-Google Apps Script (גיליון נועה)
+  // 4. תיעוד ב-Google Apps Script (גיליון נועה)
   fetch(APPS_SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -202,7 +334,7 @@ client.on('message', async (msg) => {
     signal: AbortSignal.timeout(8000)
   }).catch(() => {});
 
-  // 3. שליחת המענה האוטומטי חזרה ללקוח בוואטסאפ
+  // 5. שליחת המענה האוטומטי הדינמי חזרה ללקוח בוואטסאפ
   if (replyText) {
     console.log('🤖 מענה נועה AI שנשלח לוואטסאפ:\n' + replyText);
 
