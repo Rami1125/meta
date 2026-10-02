@@ -664,6 +664,29 @@ async function generateContextualReply(text, senderName = 'לקוח', senderPhon
     const phoneDigits = String(senderPhone || '').replace(/[^0-9]/g, '');
     const cleanName = (senderName || 'לקוח').replace(/[\{\}]/g, '').trim() || 'לקוח';
 
+    // 0. נסיון פנייה ישיר למנוע נועה AI בשרת הסטודיו (כולל Session Cart מלא וחיבור ל-Gemini)
+    try {
+      const bridgeQueryRes = await fetch(`${STUDIO_API_URL}/api/bridge/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: clean,
+          senderName: cleanName,
+          senderPhone: senderPhone
+        }),
+        signal: AbortSignal.timeout(4000)
+      });
+      if (bridgeQueryRes.ok) {
+        const queryData = await bridgeQueryRes.json();
+        if (queryData && queryData.success && queryData.reply) {
+          console.log('🤖 מענה מנוע נועה AI מהסטודיו:', queryData.reply.substring(0, 80) + '...');
+          return queryData.reply;
+        }
+      }
+    } catch (apiErr) {
+      // אם שרת הסטודיו מקומי או שקטה הרשת, נמשיך למנוע המקומי המובנה
+    }
+
     // א. בדיקת הנהלה בכירה — הראל אידלסון (מנכ"ל) / ורד אידלסון
     const isManagement = 
       cleanName.includes('הראל') || 
@@ -684,7 +707,7 @@ async function generateContextualReply(text, senderName = 'לקוח', senderPhon
     // ════════════════════════════════════════════════════════════════════════════
     // 🚨 1. נוהל מפקד עליון — ראמי מסארווה (050-886-0896)
     // ════════════════════════════════════════════════════════════════════════════
-    const isRamiPhone = phoneDigits.includes('0508860896') || phoneDigits.includes('972508860896');
+    const isRamiPhone = phoneDigits.includes('508860896') || phoneDigits.includes('0508860896') || phoneDigits.includes('972508860896');
     const isExplicitRamiText = 
       lower.includes('אני ראמי') ||
       lower.includes('זה ראמי') ||
@@ -837,20 +860,50 @@ async function generateContextualReply(text, senderName = 'לקוח', senderPhon
       item.keywords.some(kw => lower.includes(kw))
     );
 
+    // ניהול סל קניות מצטבר מקומי
+    let userCartSession = userSessions.get(`cart_${phoneDigits}`);
+    if (!userCartSession) {
+      userCartSession = { cart: [], address: '', lastUpdated: Date.now() };
+      userSessions.set(`cart_${phoneDigits}`, userCartSession);
+    }
+
+    // אם הלקוח שלח אישור סופי של ההזמנה וקיים סל עם כתובת
+    if (userCartSession.cart.length > 0 && userCartSession.address && (lower === 'מאשר' || lower === 'אישור' || lower === 'כן' || lower === '1' || lower.includes('תאשר'))) {
+      const orderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+      const finalAddr = userCartSession.address;
+      userSessions.delete(`cart_${phoneDigits}`);
+
+      return `ההזמנה אושרה ושובצה בהצלחה בסידור העבודה! ✅\n📦 מספר הזמנה: *${orderId}*\n📍 יעד אספקה: *${finalAddr}*\n🚛 נהג משובץ: *חכמת (משאית מנוף)*\n\nראמי מסארווה (050-886-0896) מפקח על האספקה. תודה שבחרת ב-ח. סבן חומרי בניין! 🏗️`;
+    }
+
+    // אם ללקוח יש כבר סל חומרים פעיל והוא שלח כתובת אספקה או שעה
+    if (userCartSession.cart.length > 0 && (hasOnlyStreetAndCity || lower.includes('רחוב') || lower.includes('בוקר') || lower.includes('מחר') || lower.includes('בשעה')) && !containsMaterials) {
+      userCartSession.address = clean;
+      userCartSession.lastUpdated = Date.now();
+
+      const cartLines = userCartSession.cart.map((item, idx) => {
+        const noteStr = item.note ? ` ${item.note}` : '';
+        return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+      }).join('\n');
+
+      return `מעולה! פרטי האספקה נקלטו בהצלחה 🚚📍\n\n📍 *יעד אספקה:* ${clean}\n🚛 *שיבוץ נדרש:* משאית מרצדס מנוף (חכמת)\n⚖️ *משקל כולל משוער:* כ-11.5 טון\n\n📋 *סיכום סל ההזמנה:*\n${cartLines}\n\nהאם לאשר ולשגר את ההזמנה לסידור העבודה של ראמי? (נא להשיב *"מאשר"* או *"1"* לתזמון סופי).`;
+    }
+
     if (hasOnlyStreetAndCity && !containsMaterials && clean.length < 50) {
       return `שלום ${cleanName} 🏗️\nקלטתי את כתובת האספקה: "*${clean}*" 📍\n\nכדי שראמי יוכל לתאם את המשאית המתאימה:\n1. מהי רשימת החומרים או גודל המכולה הדרושים?\n2. האם נדרשת פריקת מנוף (חצר / קומה) או פריקה במשאית חלוקה/פלטה?`;
     }
 
-    // עיבוד רשימת חומרים
+    // עיבוד רשימת חומרים וצבירת סל רב-שלבי
     if (containsMaterials) {
-      const identifiedLines = [];
-      let requiredBags = 0;
-      let belsCount = 0;
-      let blocksPallets = 0;
+      const isExplicitAddition = lower.includes('להוסיף') || lower.includes('רוצה להוסיף') || lower.includes('תוסיף') || lower.includes('עוד') || lower.includes('בנוסף') || lower.includes('וגם');
+      const hadPreviousCart = userCartSession.cart.length > 0;
+      const isAddition = isExplicitAddition || hadPreviousCart;
 
+      const newlyExtracted = [];
       for (const item of STANDARD_CATALOG) {
         const matchedKw = item.keywords.find(kw => lower.includes(kw));
         if (matchedKw) {
+          if (newlyExtracted.some(i => i.sku === item.sku)) continue;
           const kwIndex = lower.indexOf(matchedKw);
           const beforeSnippet = lower.substring(Math.max(0, kwIndex - 18), kwIndex);
           const numBeforeMatch = beforeSnippet.match(/(\d+)\s*(?:שקים|שקי|שק|בלות|בלה|בלת|משטחים|משטחי|משטח|יח|יחידות|דליים|דלי|פחים|פח|טון)?\s*$/);
@@ -866,33 +919,65 @@ async function generateContextualReply(text, senderName = 'לקוח', senderPhon
           }
           const numQty = parseInt(qty, 10) || 1;
 
-          identifiedLines.push({
+          let note = '';
+          if (item.palletEligible && numQty >= 30) {
+            const pallets = Math.ceil(numQty / 30);
+            note = `(${pallets} משטחים)`;
+          }
+
+          newlyExtracted.push({
             name: item.name,
             sku: item.sku,
-            qty: `${qty} ${item.unit}`,
-            unit: item.unit
+            qty: numQty,
+            unit: item.unit,
+            palletEligible: item.palletEligible,
+            isBale: item.unit === 'בלה',
+            note
           });
-
-          if (item.unit === 'בלה') belsCount += numQty;
-          if (item.palletEligible) requiredBags += numQty;
-          if (item.palletSku) blocksPallets += Math.ceil(numQty / 40);
         }
       }
 
-      const deposits = [];
-      if (belsCount > 0) deposits.push(`${belsCount}x בלה פקדון (מק"ט 60002)`);
-      if (requiredBags > 0) {
-        const pallets = Math.ceil(requiredBags / 35);
-        deposits.push(`${pallets}x משטח סבן פקדון (מק"ט 60060)`);
+      for (const newItem of newlyExtracted) {
+        const existing = userCartSession.cart.find(i => i.sku === newItem.sku);
+        if (existing) {
+          existing.qty += newItem.qty;
+          if (existing.palletEligible && existing.qty >= 30) {
+            const pallets = Math.ceil(existing.qty / 30);
+            existing.note = `(${pallets} משטחים)`;
+          }
+        } else {
+          userCartSession.cart.push(newItem);
+        }
       }
-      if (blocksPallets > 0) {
-        deposits.push(`${blocksPallets}x משטח בלוקים פקדון (מק"ט 60006)`);
+      userCartSession.lastUpdated = Date.now();
+
+      let belsCount = 0;
+      let bagsCount = 0;
+      for (const it of userCartSession.cart) {
+        if (it.isBale || it.unit === 'בלה') belsCount += it.qty;
+        if (it.palletEligible) bagsCount += it.qty;
       }
+      const palletsCount = bagsCount > 0 ? Math.ceil(bagsCount / 30) : 0;
 
-      const depositSummary = deposits.length > 0 ? deposits.join(' | ') : 'פטור מפקדונות / פריקה ללא משטחים';
-      const itemsFormatted = identifiedLines.map(i => `• ${i.name} (מק"ט ${i.sku}): *${i.qty}*`).join('\n');
+      const cartLines = userCartSession.cart.map((item, idx) => {
+        const noteStr = item.note ? ` ${item.note}` : '';
+        return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+      }).join('\n');
 
-      return `שלום ${cleanName} 🏗️\nקלטתי את פרטי ההזמנה שלך בהצלחה! ✅\n\n📦 *מפרט החומרים שנקלט:*\n${itemsFormatted}\n\n🛡️ *פקדונות נלווים:* ${depositSummary}\n\n📍 *כדי שראמי יוכל לשבץ את המשאית המתאימה:*\n1. מהי כתובת האספקה המדויקת (עיר, רחוב ומספר)?\n2. האם נדרשת פריקת מנוף (חצר / קומה) או פריקה במשאית חלוקה/פלטה?`;
+      if (isAddition && hadPreviousCart) {
+        const deposits = [];
+        if (belsCount > 0) deposits.push(`• ${belsCount} בלות פקדון (מק"ט 60002)`);
+        if (palletsCount > 0) deposits.push(`• ${palletsCount} משטחי סבן פקדון (מק"ט 60060)`);
+
+        return `מעולה, עדכנתי והוספתי להזמנה! ➕\n\n📋 *סיכום סל הזמנה מעודכן:*\n${cartLines}\n\n🛡️ *פקדונות מחייבים:*\n${deposits.join('\n')}\n\n⚖️ משקל כולל משוער: כ-11.5 טון ➔ *שיבוץ נדרש: משאית מרצדס מנוף (חכמת).*\n\n📍 לאיזו כתובת לשגר את חכמת, ולאיזו שעה לתאם את האספקה?`;
+      } else {
+        const deposits = [];
+        if (belsCount > 0) deposits.push(`${belsCount} בלות (מק"ט 60002)`);
+        if (palletsCount > 0) deposits.push(`${palletsCount} משטחי סבן (מק"ט 60060)`);
+        const depositsStr = deposits.length > 0 ? deposits.join(' + ') : 'ללא פקדונות';
+
+        return `קלטתי את פריטי ההזמנה שלך! 🏗️\n\n📦 *פירוט החומרים שנקלטו:*\n${cartLines}\n🛡️ *פקדונות נלווים:* ${depositsStr}.\n\n📍 *כדי שראמי יוכל לשבץ לך משאית:*\n1. מהי כתובת האספקה המדויקת?\n2. האם יש פריטים נוספים שתרצה להוסיף?`;
+      }
     }
 
     // ענף [1]

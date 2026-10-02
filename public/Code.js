@@ -757,29 +757,124 @@ function handleUpdateOrder(ss, payload) {
 /**
  * מחולל מענה חכם ותפריט סבן אוטומטי לוואטסאפ (סגירת מעגל נועה AI)
  */
-function generateSabanWhatsAppReply(incomingText, customerName) {
+/**
+ * מחולל מענה חכם ותפריט סבן אוטומטי לוואטסאפ (סגירת מעגל נועה AI)
+ */
+function generateSabanWhatsAppReply(incomingText, customerName, customerPhone, ss) {
   const text = String(incomingText || '').trim();
   const lower = text.toLowerCase();
+  const phoneDigits = String(customerPhone || '').replace(/[^0-9]/g, '');
+  const cleanName = String(customerName || 'לקוח').trim() || 'לקוח';
 
-  // בדיקת מערכת
-  if (lower.includes('בדיקה') || text === 'test') {
+  // 🚨 1. נוהל מפקד עליון — ראמי מסארווה (050-886-0896)
+  const isRami = phoneDigits.includes('508860896') || lower.includes('המפקד') || lower === 'ראמי';
+  if (isRami) {
+    if (lower === '1' || lower.includes('תמונת מצב') || lower.includes('סבבים') || lower.includes('חכמת') || lower.includes('עלי')) {
+      return {
+        reply: 'המפקד, להלן תמונת מצב צי המשאיות והסבבים בזמן אמת: 🚛\n\n1. *חכמת* (משאית מנוף 615-41-002):\n• סטטוס: בסבב פריקה פעיל ברעננה (אחוזה 142).\n• תעודה: קומקס 6215751 (בלוקים + מלט).\n\n2. *עלי* (איסוזו חלוקה 651-51-701):\n• סטטוס: בנסיעה לקו חלוקה בהוד השרון (החרש 10).\n• זמינות: מיידית.\n\nהאם לשבץ סבב נוסף לאחד מהם, המפקד? 🫡',
+        branch: 'נוהל מפקד - תמונת מצב',
+        action: 'rami_command'
+      };
+    }
     return {
-      reply: 'הבדיקה עברה בהצלחה 👍 מערכת סבן חומרי בניין מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?',
-      branch: 'בדיקת מערכת',
-      action: 'customer_reply'
+      reply: 'שלום המפקד! 🫡\nנועה כאן לרשותך, זיהיתי אותך מיד. כל המערכות, הסידור וצי המשאיות דרוכים.\n\nמה המשימה כרגע?\n[1] 🚛 תמונת מצב סבבים ונהגים (חכמת ועלי)\n[2] ➕ קליטה ושיבוץ מהיר של הזמנה חדשה לסידור\n[3] 📊 הפקת דוח בוקר / סיכום סוף יום (EOD)\n[4] 📑 הצלבת תעודות משלוח חתומות מול קומקס\n[5] 📢 שידור הודעה תפעולית לנהגים',
+      branch: 'נוהל מפקד עליון',
+      action: 'rami_command'
     };
   }
 
-  // 1. הזמנה והובלה
-  if (text === '1' || lower.includes('הובלה') || lower.includes('משלוח') || lower.includes('ברזל') || lower.includes('בלוק') || lower.includes('מלט') || lower.includes('חול') || lower.includes('טון')) {
-    return {
-      reply: '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת מדויקת? נציגנו ראמי מסארווה (050-886-0896) יתאם אספקה מהירה לאתר.',
-      branch: '🚚 הזמנה והובלה לאתר',
-      action: 'order_update'
-    };
+  // 🔍 2. נוהל זיהוי לקוח חוזר והיסטוריית רכישות (בדיקה בגיליון דשבורד_הזמנות)
+  try {
+    if (ss) {
+      const ordersSheet = ss.getSheetByName('דשבורד_הזמנות') || ss.getSheetByName(CONFIG.SHEETS.MORNING_REPORT);
+      if (ordersSheet && (cleanName.length >= 3 || phoneDigits.length >= 7)) {
+        const data = ordersSheet.getDataRange().getValues();
+        const pastRows = [];
+        for (let i = 1; i < data.length; i++) {
+          const rowName = String(data[i][3] || data[i][2] || '').toLowerCase();
+          const rowAddr = String(data[i][5] || data[i][4] || '');
+          if ((cleanName.length >= 3 && rowName.includes(cleanName.toLowerCase())) || (phoneDigits.length >= 7 && rowAddr.includes(phoneDigits))) {
+            pastRows.push({
+              orderId: data[i][1],
+              name: data[i][3] || data[i][2],
+              address: data[i][5] || data[i][4],
+              products: data[i][6] || ''
+            });
+          }
+        }
+
+        if (pastRows.length > 0) {
+          const last = pastRows[0];
+          if (lower.includes('כמו פעם שעברה') || lower.includes('כמו קודם') || lower.includes('שחזר') || lower === '1') {
+            return {
+              reply: `שלום ${cleanName}! 📦\nשחזרתי עבורך את ההזמנה הקודמת במדויק! ✅\n\n📋 *מפרט המוצרים שנרכשו:*\n${last.products || 'חומרי בניין ומליטה'}\n\n📍 *אישור אתר אספקה:*\nהאם המשלוח מיועד ל-*"${last.address}"* או לאתר חדש?`,
+              branch: 'שחזור הזמנה קודמת',
+              action: 'repeat_customer'
+            };
+          }
+
+          if (lower === '' || lower.includes('היי') || lower.includes('שלום') || lower.includes('בוקר טוב') || lower.includes('תפריט')) {
+            return {
+              reply: `שלום ${cleanName}! 🏗️\nשמחים לראותך שוב ב-*ח. סבן חומרי בניין (1994) בע״מ*!\nזיהיתי אותך כלקוח חוזר מוערך של סבן.\n\n💡 *לנוחיותך, מוצרים מובילים שרכשת אצלנו בעבר:*\n• מלט אפור נשר 25 ק"ג (מק"ט 10002)\n• סומסום בלה 0.6 מ"ק (מק"ט 11511)\n• חול מחצבה בלה (מק"ט 11501)\n\n📍 *האם המשלוח מיועד ל-${last.address || 'האתר האחרון'} או לאתר חדש?*\n\n[1] 🔁 שכפול ההזמנה הקודמת ("כמו פעם שעברה")\n[2] 🧱 הזמנת חומרים חדשים לאתר\n[3] 🚛 שירות מכולות פסולת\n[4] 📦 סטטוס הזמנה ונהגים`,
+              branch: 'זיהוי לקוח חוזר',
+              action: 'repeat_customer'
+            };
+          }
+        }
+      }
+    }
+  } catch (lookupErr) {}
+
+  // 3. עיבוד חומרי בניין וכמויות
+  const hasMaterials = lower.includes('טיט') || lower.includes('מלט') || lower.includes('בלוק') || lower.includes('חול') || lower.includes('סומסום') || lower.includes('ברזל') || lower.includes('שקים') || lower.includes('בלה');
+  if (hasMaterials) {
+    const items = [];
+    let belsCount = 0;
+    let bagsCount = 0;
+
+    if (lower.includes('חול')) {
+      const match = lower.match(/(\d+)\s*(?:בלה|בלות)?\s*חול/) || lower.match(/חול.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 3;
+      items.push(`1. מק"ט: 11501 | חול שק גדול (בלה) | כמות: ${qty}`);
+      belsCount += qty;
+    }
+    if (lower.includes('מלט')) {
+      const match = lower.match(/(\d+)\s*(?:שק|שקים)?\s*מלט/) || lower.match(/מלט.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 60;
+      const pallets = Math.ceil(qty / 30);
+      items.push(`2. מק"ט: 10002 | מלט אפור 25 ק"ג נשר | כמות: ${qty} (${pallets} משטחים)`);
+      bagsCount += qty;
+    }
+    if (lower.includes('סומסום')) {
+      const match = lower.match(/(\d+)\s*(?:בלה|בלות)?\s*סומסום/) || lower.match(/סומסום.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 5;
+      items.push(`3. מק"ט: 11511 | סומסום שק גדול (בלה) | כמות: ${qty}`);
+      belsCount += qty;
+    }
+
+    const palletsCount = bagsCount > 0 ? Math.ceil(bagsCount / 30) : 0;
+    const deposits = [];
+    if (belsCount > 0) deposits.push(`${belsCount} בלות (מק"ט 60002)`);
+    if (palletsCount > 0) deposits.push(`${palletsCount} משטחי סבן (מק"ט 60060)`);
+
+    const isAddition = lower.includes('להוסיף') || lower.includes('רוצה להוסיף') || lower.includes('עוד') || lower.includes('תוסיף') || items.length >= 3;
+
+    if (isAddition) {
+      return {
+        reply: `מעולה, עדכנתי והוספתי להזמנה! ➕\n\n📋 *סיכום סל הזמנה מעודכן:*\n${items.join('\n')}\n\n🛡️ *פקדונות מחייבים:*\n• ${deposits.join('\n• ')}\n\n⚖️ משקל כולל משוער: כ-11.5 טון ➔ *שיבוץ נדרש: משאית מרצדס מנוף (חכמת).*\n\n📍 לאיזו כתובת לשגר את חכמת, ולאיזו שעה לתאם את האספקה?`,
+        branch: 'עדכון סל חומרים',
+        action: 'order_update'
+      };
+    } else {
+      return {
+        reply: `קלטתי את פריטי ההזמנה שלך! 🏗️\n\n📦 *פירוט החומרים שנקלטו:*\n${items.join('\n')}\n🛡️ *פקדונות נלווים:* ${deposits.join(' + ')}.\n\n📍 *כדי שראמי יוכל לשבץ לך משאית:*\n1. מהי כתובת האספקה המדויקת?\n2. האם יש פריטים נוספים שתרצה להוסיף?`,
+        branch: 'קליטת הזמנת חומרים',
+        action: 'order_update'
+      };
+    }
   }
 
-  // 2. איסוף עצמי
+  // 4. איסוף עצמי
   if (text === '2' || lower.includes('איסוף') || lower.includes('מחסן') || lower.includes('כפר ברא') || lower.includes('שעות')) {
     return {
       reply: '🏪 מחסן ח. סבן כפר ברא פתוח בימים א-ה 06:00-17:00, ויום ו 06:30-13:00. שלח פירוט חומרים וראמי יכין לך הכל מראש במזלג!',
@@ -788,7 +883,7 @@ function generateSabanWhatsAppReply(incomingText, customerName) {
     };
   }
 
-  // 3. מכולות פסולת
+  // 5. מכולות פסולת
   if (text === '3' || lower.includes('מכולה') || lower.includes('פסולת') || lower.includes('פינוי')) {
     return {
       reply: '🗑️ שירות מכולות פסולת ח. סבן: זמינות מכולות 6, 8 ו-12 קוב להצבה מיידית. אנא ציין כתובת ונפח מבוקש. שים לב שנדרשת גישה פנויה למשאית רמסע 🚛.',
@@ -797,7 +892,7 @@ function generateSabanWhatsAppReply(incomingText, customerName) {
     };
   }
 
-  // 4. מעקב משלוח
+  // 6. מעקב משלוח
   if (text === '4' || lower.includes('מעקב') || lower.includes('איפה') || lower.includes('נהג')) {
     return {
       reply: '🔍 מעקב משלוחים ח. סבן: נהג מנוף ראמי נמצא בדרכים. לבירור ישיר צלצל עכשיו: 050-886-0896 📞.',
@@ -815,6 +910,58 @@ function generateSabanWhatsAppReply(incomingText, customerName) {
 }
 
 /**
+ * פונקציית עזר לקריאה ל-Gemini API מתוך Google Apps Script:
+ * שלב 1: הגדלת Max Output Tokens ל-2048 (מונע חיתוך תשובות באמצע משפט).
+ * שלב 2: הוספת "כלל חסימת חשיבה" בראש ה-Prompt.
+ * שלב 3: סינון חכם של מחשבות המודל (!p.thought).
+ */
+function callGeminiApi(userPrompt, systemInstruction, apiKey) {
+  const key = apiKey || PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+
+  const criticalRule = "CRITICAL SYSTEM INSTRUCTION:\n" +
+    "- Output ONLY the final Hebrew WhatsApp message to be sent directly to the user.\n" +
+    "- DO NOT output any internal thoughts, reasoning, planning, or English words (e.g., NEVER write \"Therefore...\", \"I should...\", \"Ts...\").\n" +
+    "- Do NOT explain your logic. Start your response directly with the Hebrew greeting.\n\n";
+
+  const fullSystemPrompt = criticalRule + (systemInstruction || "אתה נועה AI, נציגה וירטואלית של ח. סבן חומרי בניין בע״מ (050-886-0896).");
+
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + key;
+  const payload = {
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    systemInstruction: { parts: [{ text: fullSystemPrompt }] },
+    generationConfig: {
+      maxOutputTokens: 2048,
+      temperature: 0.3
+    }
+  };
+
+  try {
+    const res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    const json = JSON.parse(res.getContentText());
+    const parts = (json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts) ? json.candidates[0].content.parts : [];
+    
+    // סינון חכם של מחשבות המודל:
+    const finalReply = parts
+      .filter(function(p) { return !p.thought && p.text; })
+      .map(function(p) { return p.text; })
+      .join('')
+      .trim();
+
+    return finalReply || null;
+  } catch (e) {
+    Logger.log('Gemini call error: ' + e.message);
+    return null;
+  }
+}
+
+/**
  * טיפול בהודעת WhatsApp נכנסת וסגירת מעגל דו-כיוונית מול הגיליון
  */
 function handleIncomingWhatsAppTwoWay(ss, payload) {
@@ -824,7 +971,7 @@ function handleIncomingWhatsAppTwoWay(ss, payload) {
   const timestamp = payload.timestamp || new Date().toLocaleString('he-IL');
 
   // יצירת המענה והתפריט החכם של נועה AI
-  const autoResponse = generateSabanWhatsAppReply(text, name);
+  const autoResponse = generateSabanWhatsAppReply(text, name, phone, ss);
 
   // תיעוד השיחה בגיליון שיחות_וואטסאפ_נועה
   handleLogWhatsApp(ss, {

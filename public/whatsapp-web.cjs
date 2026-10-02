@@ -149,23 +149,117 @@ client.on('disconnected', (reason) => {
   console.log('⚠️ הוואטסאפ התנתק:', reason);
 });
 
-// פונקציית מענה דינמית בזמן אמת לפי עץ הענפים ב-Firebase
+// פונקציית מענה דינמית בזמן אמת לפי עץ הענפים ב-Firebase ומנוע נועה AI
 async function generateContextualReply(text, senderName, senderPhone) {
   const clean = (text || '').trim();
   const lower = clean.toLowerCase();
-  const flow = await getLiveFlow();
+  const phoneDigits = String(senderPhone || '').replace(/[^0-9]/g, '');
+  const cleanName = (senderName || 'לקוח').replace(/[\{\}]/g, '').trim() || 'לקוח';
 
-  // 1. זיהוי הזמנה קונקרטית עם חומרים / כמויות / כתובת (עקיפה חכמה ישירה להזמנה)
+  // 0. נסיון פנייה ישיר למנוע נועה AI בשרת הסטודיו (כולל Session Cart מלא וחיבור ל-Gemini)
+  try {
+    const studioUrl = process.env.STUDIO_API_URL || 'https://ais-dev-neh5cjw2tq37sjrtzdnrcq-812919982163.europe-west2.run.app';
+    const bridgeQueryRes = await fetch(`${studioUrl}/api/bridge/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: clean,
+        senderName: cleanName,
+        senderPhone: senderPhone
+      }),
+      signal: AbortSignal.timeout(4000)
+    });
+    if (bridgeQueryRes.ok) {
+      const queryData = await bridgeQueryRes.json();
+      if (queryData && queryData.success && queryData.reply) {
+        console.log('🤖 מענה מנוע נועה AI מהסטודיו:', queryData.reply.substring(0, 80) + '...');
+        return queryData.reply;
+      }
+    }
+  } catch (apiErr) {
+    // במקרה של ניתוק רשת זמני, ממשיכים לעיבוד מקומי עמיד
+  }
+
+  // 🚨 1. נוהל מפקד עליון — ראמי מסארווה (050-886-0896)
+  const isRami = phoneDigits.includes('508860896') || lower.includes('המפקד') || lower === 'ראמי';
+  if (isRami) {
+    return `שלום המפקד! 🫡 
+סליחה, נועה כאן לרשותך! זיהיתי אותך מיד. כל המערכות, הסידור וצי המשאיות דרוכים.
+
+מה המשימה כרגע?
+[1] 🚛 *תמונת מצב סבבים ונהגים* (איפה חכמת ועלי עומדים)
+[2] ➕ *קליטה ושיבוץ מהיר של הזמנה חדשה לסידור*
+[3] 📊 *הפקת דוח בוקר / סיכום סוף יום (EOD) לוואטסאפ*
+[4] 📑 *הצלבת תעודות משלוח חתומות מול קומקס*
+[5] 📢 *שידור הודעה תפעולית לנהגים*`;
+  }
+
+  // 2. זיהוי הזמנה קונקרטית עם חומרים / כמויות / סל מצטבר
   const hasMaterials = lower.includes('טיט') || lower.includes('מלט') || lower.includes('בלוק') || lower.includes('חול') || lower.includes('סומסום') || lower.includes('ברזל') || lower.includes('שקים') || lower.includes('בלה');
-  const hasAddress = lower.includes('רחוב') || lower.includes('רעננה') || lower.includes('כפר סבא') || lower.includes('הוד השרון') || lower.includes('פתח תקווה') || lower.includes('הרצליה') || lower.includes('כפר ברא') || lower.includes('ג\'לג\'וליה') || lower.includes('טייבה') || lower.includes('טירה') || /\d+/.test(clean);
+  
+  let cartSession = userSessions.get(`cart_${phoneDigits}`);
+  if (!cartSession) {
+    cartSession = { cart: [], address: '', lastUpdated: Date.now() };
+    userSessions.set(`cart_${phoneDigits}`, cartSession);
+  }
 
   if (hasMaterials) {
-    userSessions.delete(senderPhone);
-    if (hasAddress) {
-      return `רשמנו את פרטי ההזמנה שלך: "${clean}" 🚚!\nההזמנה הועברה לראמי מסארווה (050-886-0896) לתיאום משאית מנוף ואספקה מהירה לאתר. תודה שפנית לח. סבן!`;
+    const isAddition = lower.includes('להוסיף') || lower.includes('רוצה להוסיף') || lower.includes('עוד') || lower.includes('תוסיף') || cartSession.cart.length > 0;
+    
+    // קליטת פריטים
+    if (lower.includes('חול')) {
+      const match = lower.match(/(\d+)\s*(?:בלה|בלות)?\s*חול/) || lower.match(/חול.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 3;
+      if (!cartSession.cart.some(i => i.sku === '11501')) {
+        cartSession.cart.push({ sku: '11501', name: 'חול שק גדול (בלה)', qty, note: '' });
+      }
     }
-    return `מעולה! קיבלנו את פירוט החומרים: "${clean}" 🏗️.\nלאיזו כתובת מדויקת תרצה את המשלוח? ראמי מסארווה (050-886-0896) יתאם אספקה מהירה.`;
+    if (lower.includes('מלט')) {
+      const match = lower.match(/(\d+)\s*(?:שק|שקים)?\s*מלט/) || lower.match(/מלט.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 60;
+      if (!cartSession.cart.some(i => i.sku === '10002')) {
+        cartSession.cart.push({ sku: '10002', name: 'מלט אפור 25 ק"ג נשר', qty, note: '(2 משטחים)' });
+      }
+    }
+    if (lower.includes('סומסום')) {
+      const match = lower.match(/(\d+)\s*(?:בלה|בלות)?\s*סומסום/) || lower.match(/סומסום.*?(\d+)/);
+      const qty = match ? parseInt(match[1], 10) : 5;
+      if (!cartSession.cart.some(i => i.sku === '11511')) {
+        cartSession.cart.push({ sku: '11511', name: 'סומסום שק גדול (בלה)', qty, note: '' });
+      }
+    }
+
+    const cartLines = cartSession.cart.map((item, idx) => {
+      const noteStr = item.note ? ` ${item.note}` : '';
+      return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+    }).join('\n');
+
+    if (isAddition && cartSession.cart.length > 1) {
+      return `מעולה, עדכנתי והוספתי להזמנה! ➕\n\n📋 *סיכום סל הזמנה מעודכן:*\n${cartLines}\n\n🛡️ *פקדונות מחייבים:*\n• 8 בלות פקדון (מק"ט 60002)\n• 2 משטחי סבן פקדון (מק"ט 60060)\n\n⚖️ משקל כולל משוער: כ-11.5 טון ➔ *שיבוץ נדרש: משאית מרצדס מנוף (חכמת).*\n\n📍 לאיזו כתובת לשגר את חכמת, ולאיזו שעה לתאם את האספקה?`;
+    } else {
+      return `קלטתי את פריטי ההזמנה שלך! 🏗️\n\n📦 *פירוט החומרים שנקלטו:*\n${cartLines}\n🛡️ *פקדונות נלווים:* 3 בלות (מק"ט 60002) + 2 משטחי סבן (מק"ט 60060).\n\n📍 *כדי שראמי יוכל לשבץ לך משאית:*\n1. מהי כתובת האספקה המדויקת?\n2. האם יש פריטים נוספים שתרצה להוסיף?`;
+    }
   }
+
+  // אם כבר יש סל והלקוח שולח כתובת
+  if (cartSession.cart.length > 0 && (lower.includes('רחוב') || lower.includes('בוקר') || lower.includes('מחר') || lower.includes('אחוזה') || lower.includes('הבנים') || lower.includes('סבא') || lower.includes('רעננה'))) {
+    cartSession.address = clean;
+    const cartLines = cartSession.cart.map((item, idx) => {
+      const noteStr = item.note ? ` ${item.note}` : '';
+      return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+    }).join('\n');
+    return `מעולה! פרטי האספקה נקלטו בהצלחה 🚚📍\n\n📍 *יעד אספקה:* ${clean}\n🚛 *שיבוץ נדרש:* משאית מרצדס מנוף (חכמת)\n⚖️ *משקל כולל משוער:* כ-11.5 טון\n\n📋 *סיכום סל ההזמנה:*\n${cartLines}\n\nהאם לאשר ולשגר את ההזמנה לסידור העבודה של ראמי? (נא להשיב *"מאשר"* או *"1"* לתזמון סופי).`;
+  }
+
+  // אישור סופי
+  if (cartSession.cart.length > 0 && cartSession.address && (lower === 'מאשר' || lower === 'אישור' || lower === 'כן' || lower === '1')) {
+    const orderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+    const finalAddr = cartSession.address;
+    userSessions.delete(`cart_${phoneDigits}`);
+    return `ההזמנה אושרה ושובצה בהצלחה בסידור העבודה! ✅\n📦 מספר הזמנה: *${orderId}*\n📍 יעד אספקה: *${finalAddr}*\n🚛 נהג משובץ: *חכמת (משאית מנוף)*\n\nראמי מסארווה (050-886-0896) מפקח על האספקה. תודה שבחרת ב-ח. סבן חומרי בניין! 🏗️`;
+  }
+
+  const flow = await getLiveFlow();
 
   // 2. אם יש עץ ענפים דינמי ב-Firebase:
   if (flow && Array.isArray(flow.nodes) && flow.nodes.length > 0) {

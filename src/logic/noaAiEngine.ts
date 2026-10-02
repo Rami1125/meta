@@ -19,26 +19,177 @@ export interface NoaReplyResult {
 
 // נרמול מק"טים תקניים של ח. סבן
 export const STANDARD_CATALOG = [
-  { keywords: ['שק חול', 'שקי חול'], name: 'חול שק 25 ק"ג', sku: '11500', unit: 'שק', palletEligible: true },
-  { keywords: ['בלות חול', 'בלת חול', 'בלה חול', 'חול בלה', 'חול מחצבה', 'חול ים', 'חול'], name: 'חול ים/מחצבה בלה', sku: '11501', unit: 'בלה', depositSku: '60002', depositName: 'בלה פקדון' },
-  { keywords: ['בלות סומסום', 'בלת סומסום', 'בלה סומסום', 'סומסום בלה', 'סומסום'], name: 'סומסום בלה 0.6 מ"ק', sku: '11511', unit: 'בלה', depositSku: '60002', depositName: 'בלה פקדון' },
-  { keywords: ['טיט שק', 'שק טיט', 'שקי טיט'], name: 'טיט שק 25 ק"ג', sku: '11550', unit: 'שק', palletEligible: true },
-  { keywords: ['בלות טיט', 'בלת טיט', 'בלה טיט', 'טיט בלה', 'טיט מוכן', 'טיט'], name: 'טיט מוכן בלה', sku: '11551', unit: 'בלה', depositSku: '60002', depositName: 'בלה פקדון' },
-  { keywords: ['בלות מצע', 'בלת מצע', 'בלה מצע', 'מצע בלה', 'מצע א-ב', 'מצע'], name: 'מצע א-ב בלה', sku: '11540', unit: 'בלה', depositSku: '60002', depositName: 'בלה פקדון' },
-  { keywords: ['בלות חמרה', 'בלת חמרה', 'בלה חמרה', 'חמרה בלה', 'חמרה גננית', 'חמרה'], name: 'חמרה גננית בלה', sku: '11570', unit: 'בלה', depositSku: '60002', depositName: 'בלה פקדון' },
-  { keywords: ['מלט לבן'], name: 'מלט לבן נשר 25 ק"ג', sku: '10009', unit: 'שק', palletEligible: true },
-  { keywords: ['מלט נשר', 'מלט אפור', 'מלט 25', 'שקי מלט', 'שק מלט', 'מלט'], name: 'מלט אפור נשר 25 ק"ג', sku: '10002', unit: 'שק', palletEligible: true },
-  { keywords: ['בטון מוכן', 'שק בטון', 'בטון יבש', 'בטון'], name: 'בטון מוכן שק 25 ק"ג', sku: '10011', unit: 'שק', palletEligible: true },
-  { keywords: ['לטקריט', '335', 'i335'], name: 'דבק לטקריט i335 צמנטי', sku: '15335', unit: 'שק', palletEligible: true },
-  { keywords: ['דבק 109', 'שרמיק 109', '109'], name: 'דבק שרמיק 109 להדבקת ריצוף', sku: '15109', unit: 'שק', palletEligible: true },
-  { keywords: ['דבק 132', 'כרמית 132', '132'], name: 'דבק כרמית 132 גמיש', sku: '15132', unit: 'שק', palletEligible: true },
-  { keywords: ['בגר', '185', 'pl185'], name: 'שפכטל חוץ בגר PL185', sku: '14185', unit: 'שק', palletEligible: true },
-  { keywords: ['שפכטל אמריקאי', 'דלי שפכטל', 'שפכטל'], name: 'שפכטל אמריקאי דלי 28 ק"ג', sku: '35010', unit: 'דלי' },
-  { keywords: ['אלסטוסיל', '980', 'se980'], name: 'איטום אלסטוסיל SE980', sku: '14981', unit: 'פח' },
-  { keywords: ['בלוק 20', 'בלוקי בטון', 'בלוק בטון', 'בלוקים 20', 'בלוקים', 'בלוק'], name: 'בלוק בטון תקני 20/20/40', sku: '12204', unit: 'יח\'', palletSku: '60006', palletName: 'משטח בלוקים פקדון' },
-  { keywords: ['גבס לבן', 'לוח גבס', 'גבס 260', 'לוחות גבס', 'גבס'], name: 'לוח גבס לבן תקני 1.2/2.60', sku: '111260', unit: 'לוח' },
-  { keywords: ['עץ פיני', 'לוח עץ פיני', 'קרשים', 'לוחות עץ'], name: 'לוח עץ פיני מוקצע 3 מ\'', sku: '750300', unit: 'יח\'' }
+  { keywords: ['שק חול', 'שקי חול'], name: 'חול שק 25 ק"ג', sku: '11500', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['בלות חול', 'בלת חול', 'בלה חול', 'חול בלה', 'חול מחצבה', 'חול ים', 'חול'], name: 'חול שק גדול (בלה)', sku: '11501', unit: 'בלה', weight: 1.25, isBale: true, depositSku: '60002', depositName: 'בלה פקדון' },
+  { keywords: ['שק סומסום', 'שקי סומסום'], name: 'סומסום שק 25 ק"ג', sku: '11510', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['בלות סומסום', 'בלת סומסום', 'בלה סומסום', 'סומסום בלה', 'סומסום'], name: 'סומסום שק גדול (בלה)', sku: '11511', unit: 'בלה', weight: 1.25, isBale: true, depositSku: '60002', depositName: 'בלה פקדון' },
+  { keywords: ['טיט שק', 'שק טיט', 'שקי טיט'], name: 'טיט שק 25 ק"ג', sku: '11550', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['בלות טיט', 'בלת טיט', 'בלה טיט', 'טיט בלה', 'טיט מוכן', 'טיט'], name: 'טיט מוכן שק גדול (בלה)', sku: '11551', unit: 'בלה', weight: 1.25, isBale: true, depositSku: '60002', depositName: 'בלה פקדון' },
+  { keywords: ['בלות מצע', 'בלת מצע', 'בלה מצע', 'מצע בלה', 'מצע א-ב', 'מצע'], name: 'מצע א-ב שק גדול (בלה)', sku: '11540', unit: 'בלה', weight: 1.25, isBale: true, depositSku: '60002', depositName: 'בלה פקדון' },
+  { keywords: ['בלות חמרה', 'בלת חמרה', 'בלה חמרה', 'חמרה בלה', 'חמרה גננית', 'חמרה'], name: 'חמרה גננית שק גדול (בלה)', sku: '11570', unit: 'בלה', weight: 1.25, isBale: true, depositSku: '60002', depositName: 'בלה פקדון' },
+  { keywords: ['מלט לבן'], name: 'מלט לבן נשר 25 ק"ג', sku: '10009', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['מלט נשר', 'מלט אפור', 'מלט 25', 'שקי מלט', 'שק מלט', 'מלט'], name: 'מלט אפור 25 ק"ג נשר', sku: '10002', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['בטון מוכן', 'שק בטון', 'בטון יבש', 'בטון'], name: 'בטון מוכן שק 25 ק"ג', sku: '10011', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['לטקריט', '335', 'i335'], name: 'דבק לטקריט i335 צמנטי', sku: '15335', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['דבק 109', 'שרמיק 109', '109'], name: 'דבק שרמיק 109 להדבקת ריצוף', sku: '15109', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['דבק 132', 'כרמית 132', '132'], name: 'דבק כרמית 132 גמיש', sku: '15132', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['בגר', '185', 'pl185'], name: 'שפכטל חוץ בגר PL185', sku: '14185', unit: 'שק', weight: 0.025, palletEligible: true },
+  { keywords: ['שפכטל אמריקאי', 'דלי שפכטל', 'שפכטל'], name: 'שפכטל אמריקאי דלי 28 ק"ג', sku: '35010', unit: 'דלי', weight: 0.028 },
+  { keywords: ['אלסטוסיל', '980', 'se980'], name: 'איטום אלסטוסיל SE980', sku: '14981', unit: 'פח', weight: 0.025 },
+  { keywords: ['בלוק 20', 'בלוקי בטון', 'בלוק בטון', 'בלוקים 20', 'בלוקים', 'בלוק'], name: 'בלוק בטון תקני 20/20/40', sku: '12204', unit: 'יח\'', weight: 0.02, palletSku: '60006', palletName: 'משטח בלוקים פקדון' },
+  { keywords: ['גבס לבן', 'לוח גבס', 'גבס 260', 'לוחות גבס', 'גבס'], name: 'לוח גבס לבן תקני 1.2/2.60', sku: '111260', unit: 'לוח', weight: 0.025 },
+  { keywords: ['עץ פיני', 'לוח עץ פיני', 'קרשים', 'לוחות עץ'], name: 'לוח עץ פיני מוקצע 3 מ\'', sku: '750300', unit: 'יח\'', weight: 0.01 }
 ];
+
+export interface CartItem {
+  sku: string;
+  name: string;
+  qty: number;
+  unit: string;
+  weightTons: number;
+  isBale?: boolean;
+  palletEligible?: boolean;
+  palletSku?: string;
+  note?: string;
+}
+
+export interface CustomerCartSession {
+  phone: string;
+  name: string;
+  cart: CartItem[];
+  address?: string;
+  deliveryTime?: string;
+  unloadingType?: string;
+  lastUpdated: number;
+}
+
+// ניהול זיכרון שיחה וסל חומרים מצטבר בזיכרון השרת לפי מספר טלפון
+export const customerCartSessions = new Map<string, CustomerCartSession>();
+
+export function getCustomerCartSession(phone: string, name?: string): CustomerCartSession {
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  let sess = customerCartSessions.get(cleanPhone);
+  if (!sess) {
+    sess = {
+      phone: cleanPhone,
+      name: name || 'לקוח',
+      cart: [],
+      lastUpdated: Date.now()
+    };
+    customerCartSessions.set(cleanPhone, sess);
+  } else if (name && (sess.name === 'לקוח' || !sess.name)) {
+    sess.name = name;
+  }
+  return sess;
+}
+
+export function clearCustomerCart(phone: string) {
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  customerCartSessions.delete(cleanPhone);
+}
+
+// חילוץ חומרים וכמויות מתוך טקסט הודעה
+export function extractMaterialsFromText(text: string): CartItem[] {
+  const lower = (text || '').toLowerCase();
+  const items: CartItem[] = [];
+
+  for (const item of STANDARD_CATALOG) {
+    const matchedKw = item.keywords.find(kw => lower.includes(kw));
+    if (matchedKw) {
+      // הימנעות מכפילות תת-מחרוזות
+      if (items.some(i => i.sku === item.sku)) continue;
+
+      const kwIndex = lower.indexOf(matchedKw);
+      const beforeSnippet = lower.substring(Math.max(0, kwIndex - 20), kwIndex);
+      const numBeforeMatch = beforeSnippet.match(/(\d+)\s*(?:שקים|שקי|שק|בלות|בלה|בלת|משטחים|משטחי|משטח|יח|יחידות|דליים|דלי|פחים|פח|טון)?\s*$/);
+      let qty = 1;
+      if (numBeforeMatch) {
+        qty = parseInt(numBeforeMatch[1], 10);
+      } else {
+        const afterSnippet = lower.substring(kwIndex + matchedKw.length, kwIndex + matchedKw.length + 20);
+        const numAfterMatch = afterSnippet.match(/^\s*(?:כמות|של|x|\*|-)?\s*(\d+)/);
+        if (numAfterMatch) {
+          qty = parseInt(numAfterMatch[1], 10);
+        }
+      }
+
+      let note = '';
+      if (item.palletEligible && qty >= 30) {
+        const pallets = Math.ceil(qty / 30);
+        note = `(${pallets} משטחים)`;
+      }
+
+      items.push({
+        sku: item.sku,
+        name: item.name,
+        qty,
+        unit: item.unit,
+        weightTons: (item.weight || 0.025) * qty,
+        isBale: item.isBale,
+        palletEligible: item.palletEligible,
+        palletSku: item.palletSku,
+        note
+      });
+    }
+  }
+
+  return items;
+}
+
+// חישוב פקדונות, משקל כולל ומשאית נדרשת עבור סל מצטבר
+export function calculateCartTotals(cart: CartItem[]) {
+  let belsCount = 0;
+  let bagsCount = 0;
+  let blocksPallets = 0;
+  let totalWeightTons = 0;
+
+  for (const item of cart) {
+    if (item.isBale || item.unit === 'בלה') {
+      belsCount += item.qty;
+    }
+    if (item.palletEligible) {
+      bagsCount += item.qty;
+    }
+    if (item.palletSku) {
+      blocksPallets += Math.ceil(item.qty / 40);
+    }
+    totalWeightTons += item.weightTons;
+  }
+
+  const palletsCount = bagsCount > 0 ? Math.ceil(bagsCount / 30) : 0;
+
+  const deposits: string[] = [];
+  if (belsCount > 0) {
+    deposits.push(`${belsCount} בלות (מק"ט 60002)`);
+  }
+  if (palletsCount > 0) {
+    deposits.push(`${palletsCount} משטחי סבן (מק"ט 60060)`);
+  }
+  if (blocksPallets > 0) {
+    deposits.push(`${blocksPallets} משטח בלוקים (מק"ט 60006)`);
+  }
+
+  // עיגול משקל משוער לחצי טון
+  const roundedWeight = Math.round(totalWeightTons * 2) / 2;
+  const weightDisplay = roundedWeight > 0 ? `כ-${roundedWeight} טון` : 'חומרים קלים';
+
+  // שיבוץ משאית מבצעית: מעל 5 טון או עם בלות מנוף = משאית מנוף (חכמת)
+  let recommendedTruck = 'משאית חלוקה/איסוזו (עלי)';
+  if (roundedWeight >= 4.0 || belsCount > 0 || blocksPallets > 0) {
+    recommendedTruck = 'משאית מרצדס מנוף (חכמת)';
+  }
+
+  return {
+    belsCount,
+    bagsCount,
+    palletsCount,
+    blocksPallets,
+    deposits,
+    roundedWeight,
+    weightDisplay,
+    recommendedTruck
+  };
+}
 
 // זיהוי ערים ואתרי אספקה
 const KNOWN_CITIES = [
@@ -52,14 +203,26 @@ const KNOWN_CITIES = [
  */
 export function processNoaAiMessage(
   rawText: string,
-  rawName: string = 'לקוח',
+  rawNameOrOptions: string | { senderName?: string; senderPhone?: string; customerHistory?: any } = 'לקוח',
   rawPhone: string = '',
   customerHistory?: any
 ): NoaReplyResult {
+  let effectiveName = 'לקוח';
+  let effectivePhone = rawPhone || '';
+  let effectiveHistory = customerHistory;
+
+  if (rawNameOrOptions && typeof rawNameOrOptions === 'object') {
+    effectiveName = rawNameOrOptions.senderName || 'לקוח';
+    effectivePhone = rawNameOrOptions.senderPhone || rawPhone || '';
+    effectiveHistory = rawNameOrOptions.customerHistory || customerHistory;
+  } else if (typeof rawNameOrOptions === 'string') {
+    effectiveName = rawNameOrOptions;
+  }
+
   const text = (rawText || '').trim();
   const lower = text.toLowerCase();
-  const phoneDigits = String(rawPhone || '').replace(/[^0-9]/g, '');
-  const cleanName = (rawName || 'לקוח').replace(/[\{\}]/g, '').trim() || 'לקוח';
+  const phoneDigits = String(effectivePhone || '').replace(/[^0-9]/g, '');
+  const cleanName = (effectiveName || 'לקוח').replace(/[\{\}]/g, '').trim() || 'לקוח';
 
   // א. בדיקת הנהלה בכירה — הראל אידלסון (מנכ"ל) / ורד אידלסון
   const isManagement = 
@@ -81,7 +244,7 @@ export function processNoaAiMessage(
   // ════════════════════════════════════════════════════════════════════════════
   // 🚨 1. נוהל מפקד עליון — ראמי מסארווה (050-886-0896)
   // ════════════════════════════════════════════════════════════════════════════
-  const isRamiPhone = phoneDigits.includes('0508860896') || phoneDigits.includes('972508860896');
+  const isRamiPhone = phoneDigits.includes('508860896') || phoneDigits.includes('0508860896') || phoneDigits.includes('972508860896');
   const isExplicitRamiText = 
     lower.includes('אני ראמי') ||
     lower.includes('זה ראמי') ||
@@ -226,16 +389,17 @@ export function processNoaAiMessage(
   // ════════════════════════════════════════════════════════════════════════════
   // 🔍 2.5 נוהל זיהוי לקוח חוזר והיסטוריית רכישות (Customer History)
   // ════════════════════════════════════════════════════════════════════════════
+  const activeHistory = effectiveHistory || customerHistory;
   const hasCustomerHistory = Boolean(
-    customerHistory && 
-    (customerHistory.ordersCount > 0 || (customerHistory.orders && customerHistory.orders.length > 0))
+    activeHistory && 
+    (activeHistory.ordersCount > 0 || (activeHistory.orders && activeHistory.orders.length > 0))
   );
 
   if (hasCustomerHistory) {
-    const lastOrder = customerHistory.lastOrder || (customerHistory.orders && customerHistory.orders[0]);
-    const lastAddress = lastOrder?.deliveryAddress || (customerHistory.previousAddresses && customerHistory.previousAddresses[0]) || '';
-    const topProducts = customerHistory.topProducts || [];
-    const displayName = customerHistory.customerName || cleanName;
+    const lastOrder = activeHistory.lastOrder || (activeHistory.orders && activeHistory.orders[0]);
+    const lastAddress = lastOrder?.deliveryAddress || (activeHistory.previousAddresses && activeHistory.previousAddresses[0]) || '';
+    const topProducts = activeHistory.topProducts || [];
+    const displayName = activeHistory.customerName || cleanName;
 
     // 4. אם הלקוח מבקש "כמו פעם שעברה" — שחזר מיד את רשימת המוצרים והמק"טים המדויקת של אותה הזמנה
     const isRepeatLastOrderRequest = 
@@ -254,6 +418,13 @@ export function processNoaAiMessage(
         (lastOrder.parsedItems && lastOrder.parsedItems.length > 0 
           ? lastOrder.parsedItems.map((p: any) => `• ${p.name}${p.sku ? ` (מק"ט ${p.sku})` : ''}: *${p.quantity}*`).join('\n')
           : lastOrder.rawProducts || 'אותם חומרים כבהזמנה הקודמת');
+
+      const session = getCustomerCartSession(rawPhone, displayName);
+      const parsedItems = extractMaterialsFromText(summary);
+      if (parsedItems.length > 0) {
+        session.cart = parsedItems;
+        session.lastUpdated = Date.now();
+      }
 
       return {
         replyText: `שלום ${displayName}! 📦\nשחזרתי עבורך את ההזמנה הקודמת${lastOrder.orderId ? ` (הזמנה קומקס #${lastOrder.orderId})` : ''} במדויק! ✅\n\n📋 *מפרט המוצרים והמק"טים ששוחזרו:*\n${summary}\n\n📍 *אישור אתר אספקה:*\nהאם לספק לכתובת האתר האחרונה: "*${lastAddress}*", או שיש אתר אספקה חדש?`,
@@ -338,6 +509,50 @@ export function processNoaAiMessage(
     item.keywords.some(kw => lower.includes(kw))
   );
 
+  const session = getCustomerCartSession(rawPhone, cleanName);
+
+  // אם הלקוח שלח אישור סופי של ההזמנה (מאשר / 1 / תאשר) וקיים סל עם כתובת
+  if (session.cart.length > 0 && session.address && (lower === 'מאשר' || lower === 'אישור' || lower === 'כן' || lower === '1' || lower.includes('תאשר') || lower.includes('סגור'))) {
+    const orderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+    const { recommendedTruck } = calculateCartTotals(session.cart);
+    const driverName = recommendedTruck.includes('חכמת') ? 'חכמת (משאית מנוף)' : 'עלי (משאית איסוזו)';
+    const finalAddress = session.address;
+    
+    // איפוס הסל לאחר סגירת מעגל מוצלחת
+    clearCustomerCart(rawPhone);
+
+    return {
+      replyText: `ההזמנה אושרה ושובצה בהצלחה בסידור העבודה! ✅\n📦 מספר הזמנה: *${orderId}*\n📍 יעד אספקה: *${finalAddress}*\n🚛 נהג משובץ: *${driverName}*\n\nראמי מסארווה (050-886-0896) מפקח על האספקה. תודה שבחרת ב-ח. סבן חומרי בניין! 🏗️`,
+      flowTitle: 'אישור ושיבוץ סופי בסידור',
+      branchId: 'order_finalized',
+      isRami: false,
+      isVIP: false,
+      actionType: 'order_intake'
+    };
+  }
+
+  // אם ללקוח יש כבר סל חומרים פעיל והוא שלח כתובת אספקה או שעה
+  if (session.cart.length > 0 && (hasOnlyStreetAndCity || lower.includes('רחוב') || lower.includes('בוקר') || lower.includes('מחר') || lower.includes('בשעה') || lower.includes('שעה')) && !containsMaterials) {
+    session.address = text;
+    session.lastUpdated = Date.now();
+    const { deposits, weightDisplay, recommendedTruck } = calculateCartTotals(session.cart);
+
+    const cartLines = session.cart.map((item, idx) => {
+      const noteStr = item.note ? ` ${item.note}` : '';
+      return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+    }).join('\n');
+    const depositsFormatted = deposits.map(d => `• ${d} פקדון`).join('\n') || '• פטור מפקדונות';
+
+    return {
+      replyText: `מעולה! פרטי האספקה נקלטו בהצלחה 🚚📍\n\n📍 *יעד אספקה:* ${text}\n🚛 *שיבוץ נדרש:* ${recommendedTruck}\n⚖️ *משקל כולל משוער:* ${weightDisplay}\n\n📋 *סיכום סל ההזמנה:*\n${cartLines}\n\n🛡️ *פקדונות מחייבים:*\n${depositsFormatted}\n\nהאם לאשר ולשגר את ההזמנה לסידור העבודה של ראמי? (נא להשיב *"מאשר"* או *"1"* לתזמון סופי).`,
+      flowTitle: 'קליטת כתובת וסיכום הזמנה',
+      branchId: 'order_address_confirmed',
+      isRami: false,
+      isVIP: false,
+      actionType: 'order_intake'
+    };
+  }
+
   if (hasOnlyStreetAndCity && !containsMaterials && text.length < 50) {
     return {
       replyText: `שלום ${cleanName} 🏗️\nקלטתי את כתובת האספקה: "*${text}*" 📍\n\nכדי שראמי יוכל לתאם את המשאית המתאימה:\n1. מהי רשימת החומרים או גודל המכולה הדרושים?\n2. האם נדרשת פריקת מנוף (חצר / קומה) או פריקה במשאית חלוקה/פלטה?`,
@@ -349,68 +564,69 @@ export function processNoaAiMessage(
     };
   }
 
-  // נרמול רשימת חומרים (אם ההודעה מכילה חומרי בניין ספציפיים)
+  // נרמול רשימת חומרים וצבירת סל רכישה רב-שלבי (Multi-Turn Cart)
   if (containsMaterials) {
-    const identifiedLines: { name: string; sku: string; qty: string; unit: string; deposit?: string }[] = [];
-    let requiredBags = 0;
-    let belsCount = 0;
-    let blocksPallets = 0;
+    const isExplicitAddition = lower.includes('להוסיף') || lower.includes('רוצה להוסיף') || lower.includes('תוסיף') || lower.includes('עוד') || lower.includes('בנוסף') || lower.includes('וגם');
+    const hadPreviousCart = session.cart.length > 0;
+    const isAddition = isExplicitAddition || hadPreviousCart;
 
-    for (const item of STANDARD_CATALOG) {
-      const matchedKw = item.keywords.find(kw => lower.includes(kw));
-      if (matchedKw) {
-        const kwIndex = lower.indexOf(matchedKw);
-        const beforeSnippet = lower.substring(Math.max(0, kwIndex - 18), kwIndex);
-        const numBeforeMatch = beforeSnippet.match(/(\d+)\s*(?:שקים|שקי|שק|בלות|בלה|בלת|משטחים|משטחי|משטח|יח|יחידות|דליים|דלי|פחים|פח|טון)?\s*$/);
-        let qty = '1';
-        if (numBeforeMatch) {
-          qty = numBeforeMatch[1];
-        } else {
-          const afterSnippet = lower.substring(kwIndex + matchedKw.length, kwIndex + matchedKw.length + 18);
-          const numAfterMatch = afterSnippet.match(/^\s*(?:כמות|של|x|\*|-)?\s*(\d+)/);
-          if (numAfterMatch) {
-            qty = numAfterMatch[1];
+    // חילוץ החומרים מההודעה הנוכחית
+    const newlyExtracted = extractMaterialsFromText(text);
+
+    if (newlyExtracted.length > 0) {
+      for (const newItem of newlyExtracted) {
+        const existing = session.cart.find(i => i.sku === newItem.sku);
+        if (existing) {
+          existing.qty += newItem.qty;
+          existing.weightTons += newItem.weightTons;
+          if (existing.palletEligible && existing.qty >= 30) {
+            const pallets = Math.ceil(existing.qty / 30);
+            existing.note = `(${pallets} משטחים)`;
           }
+        } else {
+          session.cart.push(newItem);
         }
-        const numQty = parseInt(qty, 10) || 1;
-
-        identifiedLines.push({
-          name: item.name,
-          sku: item.sku,
-          qty: `${qty} ${item.unit}`,
-          unit: item.unit,
-          deposit: item.depositName ? `${item.depositName} (מק"ט ${item.depositSku})` : undefined
-        });
-
-        if (item.unit === 'בלה') belsCount += numQty;
-        if (item.palletEligible) requiredBags += numQty;
-        if (item.palletSku) blocksPallets += Math.ceil(numQty / 40);
       }
+      session.lastUpdated = Date.now();
     }
 
-    let depositSummary = '';
-    const deposits: string[] = [];
-    if (belsCount > 0) deposits.push(`${belsCount}x בלה פקדון (מק"ט 60002)`);
-    if (requiredBags > 0) {
-      const pallets = Math.ceil(requiredBags / 35);
-      deposits.push(`${pallets}x משטח סבן פקדון (מק"ט 60060)`);
+    const { deposits, weightDisplay, recommendedTruck } = calculateCartTotals(session.cart);
+
+    const cartLines = session.cart.map((item, idx) => {
+      const noteStr = item.note ? ` ${item.note}` : '';
+      return `${idx + 1}. מק"ט: ${item.sku} | ${item.name} | כמות: ${item.qty}${noteStr}`;
+    }).join('\n');
+
+    if (isAddition && hadPreviousCart) {
+      // ════════════════════════════════════════════════════════════════════════
+      // שלב 2: סיכום סל הזמנה מעודכן לאחר תוספת פריטים
+      // ════════════════════════════════════════════════════════════════════════
+      const depositsFormatted = deposits.map(d => `• ${d} פקדון`).join('\n') || '• פטור מפקדונות';
+      const driverName = recommendedTruck.includes('חכמת') ? 'חכמת' : 'עלי';
+
+      return {
+        replyText: `מעולה, עדכנתי והוספתי להזמנה! ➕\n\n📋 *סיכום סל הזמנה מעודכן:*\n${cartLines}\n\n🛡️ *פקדונות מחייבים:*\n${depositsFormatted}\n\n⚖️ משקל כולל משוער: ${weightDisplay} ➔ *שיבוץ נדרש: ${recommendedTruck}.*\n\n📍 לאיזו כתובת לשגר את ${driverName}, ולאיזו שעה לתאם את האספקה?`,
+        flowTitle: 'עדכון סל חומרים מצטבר',
+        branchId: 'order_cart_updated',
+        isRami: false,
+        isVIP: false,
+        actionType: 'order_intake'
+      };
+    } else {
+      // ════════════════════════════════════════════════════════════════════════
+      // שלב 1: קליטת פריטי הזמנה ראשונית ובירור כתובת + תוספות
+      // ════════════════════════════════════════════════════════════════════════
+      const depositsSummary = deposits.length > 0 ? deposits.join(' + ') : 'ללא פקדונות';
+
+      return {
+        replyText: `קלטתי את פריטי ההזמנה שלך! 🏗️\n\n📦 *פירוט החומרים שנקלטו:*\n${cartLines}\n🛡️ *פקדונות נלווים:* ${depositsSummary}.\n\n📍 *כדי שראמי יוכל לשבץ לך משאית:*\n1. מהי כתובת האספקה המדויקת?\n2. האם יש פריטים נוספים שתרצה להוסיף?`,
+        flowTitle: 'קליטת פריטי הזמנה ראשונית',
+        branchId: 'order_intake_step1',
+        isRami: false,
+        isVIP: false,
+        actionType: 'order_intake'
+      };
     }
-    if (blocksPallets > 0) {
-      deposits.push(`${blocksPallets}x משטח בלוקים פקדון (מק"ט 60006)`);
-    }
-
-    depositSummary = deposits.length > 0 ? deposits.join(' | ') : 'פטור מפקדונות / פריקה ללא משטחים';
-
-    const itemsFormatted = identifiedLines.map(i => `• ${i.name} (מק"ט ${i.sku}): *${i.qty}*`).join('\n');
-
-    return {
-      replyText: `שלום ${cleanName} 🏗️\nקלטתי את פרטי ההזמנה שלך בהצלחה! ✅\n\n📦 *מפרט החומרים שנקלט:*\n${itemsFormatted}\n\n🛡️ *פקדונות נלווים:* ${depositSummary}\n\n📍 *כדי שראמי יוכל לשבץ את המשאית המתאימה:*\n1. מהי כתובת האספקה המדויקת (עיר, רחוב ומספר)?\n2. האם נדרשת פריקת מנוף (חצר / קומה) או פריקה במשאית חלוקה/פלטה?`,
-      flowTitle: 'נרמול וקליטת חומרי בניין',
-      branchId: 'order_normalized_intake',
-      isRami: false,
-      isVIP: false,
-      actionType: 'order_intake'
-    };
   }
 
   // ענף [1] — הזמנת חומרי בניין והובלות לאתר (או בחירת 11-15)

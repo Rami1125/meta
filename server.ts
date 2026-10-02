@@ -201,7 +201,11 @@ async function generateAiReply(userPrompt: string, systemPrompt?: string, contex
       apiKey,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
-    const prompt = `
+    const prompt = `CRITICAL SYSTEM INSTRUCTION:
+- Output ONLY the final Hebrew WhatsApp message to be sent directly to the user.
+- DO NOT output any internal thoughts, reasoning, planning, or English words (e.g., NEVER write "Therefore...", "I should...", "Ts...").
+- Do NOT explain your logic. Start your response directly with the Hebrew greeting.
+
 System Instructions:
 ${systemPrompt || 'אתה נועה AI, נציגה וירטואלית של ח. סבן חומרי בניין בע״מ (טלפון 050-8860896). המחוברת ישירות למנוע ההפצה של JONI Make.'}
 הפעל תמיד את הכלי trigger_joni_make כדי לשדר את התשובה ישירות ל-Make ולוואטסאפ.
@@ -219,11 +223,20 @@ Write a concise WhatsApp reply in Hebrew (2-3 sentences max, with relevant emoji
       model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
+        maxOutputTokens: 2048,
         tools: [{ functionDeclarations: [triggerJoniMakeFunctionDeclaration] }]
       }
     });
 
-    let reply = response.text?.trim() || 'תודה שפנית לח. סבן חומרי בניין. פנייתך הועברה לצוות המכירות.';
+    // סינון חכם של מחשבות המודל:
+    const parts = (response as any).candidates?.[0]?.content?.parts || [];
+    const textFromParts = parts
+      .filter((p: any) => !p.thought && p.text)
+      .map((p: any) => p.text)
+      .join('')
+      .trim();
+
+    let reply = textFromParts || response.text?.trim() || 'תודה שפנית לח. סבן חומרי בניין. פנייתך הועברה לצוות המכירות.';
 
     if (response.functionCalls && response.functionCalls.length > 0) {
       for (const call of response.functionCalls) {
@@ -963,7 +976,12 @@ app.post('/api/meta/send-live-menu', async (req: Request, res: Response) => {
 const FB_ROOT = "https://saban-ai-drive-default-rtdb.europe-west1.firebasedatabase.app";
 const FB_PATH = "joni/incoming";
 
-const SABAN_AI_SYSTEM_PROMPT = `אתה נציג שירות של ח. סבן חומרי בניין בע"מ - כפר ברא.
+const SABAN_AI_SYSTEM_PROMPT = `CRITICAL SYSTEM INSTRUCTION:
+- Output ONLY the final Hebrew WhatsApp message to be sent directly to the user.
+- DO NOT output any internal thoughts, reasoning, planning, or English words (e.g., NEVER write "Therefore...", "I should...", "Ts...").
+- Do NOT explain your logic. Start your response directly with the Hebrew greeting.
+
+אתה נציג שירות של ח. סבן חומרי בניין בע"מ - כפר ברא.
 אתה מדבר בעברית מלאה, ידידותי, קצר, עם אימוג'ים 🏗️🚚.
 מטרה: להבין מה הלקוח צריך (ברזל, בלוקים, מלט, חול, מכולה) ולתאם הובלה/איסוף.
 אם לקוח אומר 'בדיקה' - תענה 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?'
@@ -999,8 +1017,7 @@ async function generateSabanAiChatReply(text: string, history: any[] = [], from?
   if (apiKey) {
     try {
       const ai = new GoogleGenAI();
-      const prompt = `
-System Instructions:
+      const prompt = `System Instructions:
 ${SABAN_AI_SYSTEM_PROMPT}
 
 אתה נועה AI, המחוברת ישירות למנוע ההפצה של JONI Make.
@@ -1014,24 +1031,33 @@ ${SABAN_AI_SYSTEM_PROMPT}
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
+          maxOutputTokens: 2048,
           tools: [{ functionDeclarations: [triggerJoniMakeFunctionDeclaration] }]
         }
       });
+
+      // סינון חכם של מחשבות המודל:
+      const parts = (res as any).candidates?.[0]?.content?.parts || [];
+      const textFromParts = parts
+        .filter((p: any) => !p.thought && p.text)
+        .map((p: any) => p.text)
+        .join('')
+        .trim();
 
       if (res.functionCalls && res.functionCalls.length > 0) {
         for (const call of res.functionCalls) {
           if (call.name === 'trigger_joni_make') {
             const args = call.args as any;
             const targetTo = args?.to || recipientPhone;
-            const targetMsg = args?.message || res.text || reply;
+            const targetMsg = args?.message || textFromParts || res.text || reply;
             const targetAct = args?.action || 'customer_reply';
             await triggerJoniMake(targetTo, targetMsg, targetAct);
             reply = targetMsg;
             makeDispatched = true;
           }
         }
-      } else if (res.text) {
-        reply = res.text.trim();
+      } else if (textFromParts || res.text) {
+        reply = (textFromParts || res.text || '').trim();
       }
     } catch (err) {
       console.error('Error generating Saban AI chat reply:', err);
@@ -1664,11 +1690,19 @@ async function generateSmartReplySuggestions(lastCustomerMessage: string, histor
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          maxOutputTokens: 2048
         }
       });
 
-      const text = response.text?.trim() || '';
+      const parts = (response as any).candidates?.[0]?.content?.parts || [];
+      const textFromParts = parts
+        .filter((p: any) => !p.thought && p.text)
+        .map((p: any) => p.text)
+        .join('')
+        .trim();
+
+      const text = textFromParts || response.text?.trim() || '';
       try {
         const parsed = JSON.parse(text);
         if (Array.isArray(parsed) && parsed.length >= 3) {
