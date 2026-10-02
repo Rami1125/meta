@@ -535,6 +535,128 @@ const KNOWN_CITIES = [
   'בני ברק', 'גבעתיים', 'רמת גן', 'שוהם', 'כפר קאסם'
 ];
 
+// מטמון מקומי להיסטוריית לקוחות בגשר
+let bridgeCustomerCache = [];
+let bridgeCustomerCacheTime = 0;
+
+async function fetchCustomerProfile(customerId, customerName, phone) {
+  const cleanId = (customerId || '').trim();
+  const cleanName = (customerName || '').trim();
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+
+  if (!cleanId && !cleanName && !cleanPhone) return null;
+
+  // 1. נסה תחילה מול שרת הסטודיו
+  try {
+    const q = new URLSearchParams();
+    if (cleanId) q.append('customerId', cleanId);
+    if (cleanName) q.append('customerName', cleanName);
+    if (cleanPhone) q.append('phone', cleanPhone);
+
+    const res = await fetch(`${STUDIO_API_URL}/api/customers/history?${q.toString()}`, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(3500)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.exists && data.profile) {
+        return data.profile;
+      }
+    }
+  } catch (studioErr) {
+    // הסטודיו אינו זמין כרגע, נעבור לשליפה ישירה מ-Google Sheets
+  }
+
+  // 2. גיבוי: שליפה ישירה מתוך Google Sheets GViz CSV/JSON
+  try {
+    const now = Date.now();
+    if (bridgeCustomerCache.length === 0 || now - bridgeCustomerCacheTime > 180000) {
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/1Ie7gKql_EDdrIN9HqunJc9Ey5k0WXXfPRxs0Vp1Bs2c/gviz/tq?tqx=out:json&sheet=${encodeURIComponent('דשבורד_הזמנות')}`;
+      const res = await fetch(gvizUrl, { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const txt = await res.text();
+        const rawJson = txt
+          .replace(/^\/\*O_o\*\/\s*google\.visualization\.Query\.setResponse\(/, '')
+          .replace(/\);?\s*$/, '');
+        const parsed = JSON.parse(rawJson);
+        const rows = parsed?.table?.rows || [];
+
+        const orders = [];
+        for (const r of rows) {
+          if (!r.c) continue;
+          const getVal = (idx) => {
+            const cell = r.c[idx];
+            return cell ? String(cell.f || cell.v || '').trim() : '';
+          };
+          const orderId = getVal(1);
+          const cId = getVal(2);
+          const cName = getVal(3);
+          const addr = getVal(5);
+          const prods = getVal(6);
+          const drv = getVal(9);
+          const drvPhone = getVal(15);
+
+          if (orderId || cId || cName) {
+            orders.push({
+              orderId,
+              customerId: cId,
+              customerName: cName,
+              deliveryAddress: addr,
+              rawProducts: prods,
+              assignedDriver: drv,
+              driverPhone: drvPhone
+            });
+          }
+        }
+        if (orders.length > 0) {
+          bridgeCustomerCache = orders;
+          bridgeCustomerCacheTime = now;
+        }
+      }
+    }
+
+    // סינון הזמנות הלקוח
+    const matched = bridgeCustomerCache.filter(o => {
+      if (cleanId && o.customerId && o.customerId.toLowerCase() === cleanId.toLowerCase()) return true;
+      if (cleanName && o.customerName) {
+        const on = o.customerName.toLowerCase();
+        const cn = cleanName.toLowerCase();
+        if (on === cn || on.includes(cn) || cn.includes(on)) return true;
+        const parts = cn.split(/[\s/\\-]+/).filter(w => w.length >= 3);
+        if (parts.some(p => on.includes(p))) return true;
+      }
+      if (cleanPhone && cleanPhone.length >= 7) {
+        if (o.deliveryAddress && o.deliveryAddress.includes(cleanPhone)) return true;
+        if (o.driverPhone && o.driverPhone.replace(/[^0-9]/g, '').includes(cleanPhone)) return true;
+      }
+      return false;
+    });
+
+    if (matched.length > 0) {
+      const last = matched[0];
+      const addresses = [...new Set(matched.map(m => m.deliveryAddress).filter(Boolean))];
+      return {
+        customerName: last.customerName || cleanName,
+        customerId: last.customerId || cleanId,
+        ordersCount: matched.length,
+        orders: matched,
+        lastOrder: last,
+        previousAddresses: addresses,
+        topProducts: [
+          { name: 'מלט אפור נשר 25 ק"ג', sku: '10002' },
+          { name: 'סומסום בלה 0.6 מ"ק', sku: '11511' },
+          { name: 'לוחות גבס לבן 2.60', sku: '111260' }
+        ],
+        lastOrderFormattedSummary: last.rawProducts || 'אותם חומרים כבהזמנה הקודמת'
+      };
+    }
+  } catch (err) {
+    console.warn('[Bridge] Warning fetching customer profile from sheets:', err.message);
+  }
+
+  return null;
+}
+
 async function generateContextualReply(text, senderName = 'לקוח', senderPhone = '') {
   try {
     const clean = (text || '').trim();
@@ -632,8 +754,79 @@ async function generateContextualReply(text, senderName = 'לקוח', senderPhon
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // 🏗️ 3. עץ תפריט השירות לוואטסאפ (לקוחות וקבלנים)
+    // 🔍 2.5 נוהל זיהוי לקוח חוזר והיסטוריית רכישות (Customer History)
     // ════════════════════════════════════════════════════════════════════════════
+    const customerHistory = await fetchCustomerProfile(undefined, cleanName, senderPhone);
+
+    if (customerHistory && (customerHistory.ordersCount > 0 || (customerHistory.orders && customerHistory.orders.length > 0))) {
+      const lastOrder = customerHistory.lastOrder || (customerHistory.orders && customerHistory.orders[0]);
+      const lastAddress = lastOrder?.deliveryAddress || (customerHistory.previousAddresses && customerHistory.previousAddresses[0]) || '';
+      const topProducts = customerHistory.topProducts || [];
+      const displayName = customerHistory.customerName || cleanName;
+
+      // 4. שחזור הזמנה קודמת אם הלקוח מבקש "כמו פעם שעברה"
+      const isRepeatLastOrderRequest = 
+        lower.includes('כמו פעם שעברה') || 
+        lower.includes('כמו קודם') || 
+        lower.includes('אותו דבר') || 
+        lower.includes('כמו בהזמנה הקודמת') || 
+        lower.includes('שחזר לי הזמנה') || 
+        lower.includes('שחזור הזמנה') || 
+        lower.includes('לשחזר') || 
+        lower.includes('הזמנה קודמת') || 
+        lower === '1';
+
+      if (isRepeatLastOrderRequest && lastOrder) {
+        const summary = customerHistory.lastOrderFormattedSummary || lastOrder.rawProducts || 'אותם חומרים כבהזמנה הקודמת';
+        return `שלום ${displayName}! 📦\nשחזרתי עבורך את ההזמנה הקודמת${lastOrder.orderId ? ` (הזמנה קומקס #${lastOrder.orderId})` : ''} במדויק! ✅\n\n📋 *מפרט המוצרים והמק"טים ששוחזרו:*\n${summary}\n\n📍 *אישור אתר אספקה:*\nהאם לספק לכתובת האתר האחרונה: "*${lastAddress}*", או שיש אתר אספקה חדש?`;
+      }
+
+      // אישור כתובת קודמת
+      const isConfirmingAddress = 
+        lower.includes('לאותו אתר') || 
+        lower.includes('לאותה כתובת') || 
+        lower === 'כן' || 
+        lower === 'לשם' || 
+        lower.includes('לכתובת הקודמת');
+
+      if (isConfirmingAddress && lastAddress) {
+        return `מצוין ${displayName}! רשמתי אספקה ל-*"${lastAddress}"* 📍\n\nהאם לשבץ את אותם המוצרים כמו פעם שעברה, או שתרצה להוסיף/לשנות כמויות וחומרים?`;
+      }
+
+      // ברכת שלום ופתיחה ללקוח חוזר
+      const isGreetingOrMenu = 
+        lower === '' || 
+        lower === '0' || 
+        lower === 'תפריט' || 
+        lower === 'ראשי' || 
+        lower.includes('היי') || 
+        lower.includes('שלום') || 
+        lower.includes('בוקר טוב') || 
+        lower.includes('ערב טוב') || 
+        lower.includes('חזרה');
+
+      const containsMaterialsInText = STANDARD_CATALOG.some(item => 
+        item.keywords.some(kw => lower.includes(kw))
+      );
+
+      if (isGreetingOrMenu && !containsMaterialsInText) {
+        let topProductsText = '';
+        if (topProducts.length > 0) {
+          topProductsText = `\n💡 *לנוחיותך, מוצרים מובילים שרכשת אצלנו בעבר:*\n` + 
+            topProducts.slice(0, 3).map((p) => `• ${p.name}${p.sku ? ` (מק"ט ${p.sku})` : ''}`).join('\n') + '\n';
+        }
+
+        const addressPrompt = lastAddress 
+          ? `📍 *האם המשלוח מיועד ל-${lastAddress} או לאתר חדש?*`
+          : `📍 לאיזה אתר אספקה מיועד המשלוח הפעם?`;
+
+        return `שלום ${displayName}! 🏗️\nשמחים לראותך שוב ב-*ח. סבן חומרי בניין (1994) בע״מ*!\nזיהיתי אותך כלקוח חוזר מוערך של סבן.\n${topProductsText}\n${addressPrompt}\n\nנא להשיב עם הפעולה הרצויה:\n[1] 🔁 *שכפול ההזמנה הקודמת במדויק* ("כמו פעם שעברה")\n[2] 🧱 *הזמנת חומרים חדשים לאתר*\n[3] 🚛 *שירות מכולות לפינוי פסולת*\n[4] 📦 *בירור סטטוס הזמנה / נהג*\n[5] 📞 *מענה אישי מול ראמי מסארווה*`;
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // 🏗️ 3. עץ תפריט השירות לוואטסאפ (לקוחות וקבלנים)
+    // ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     // כלל ברזל 2: זיהוי כתובת ישירה
     const hasOnlyStreetAndCity = 

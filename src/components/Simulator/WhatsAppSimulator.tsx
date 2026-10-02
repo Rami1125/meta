@@ -53,13 +53,36 @@ interface SimMessage {
   };
 }
 
+interface PersonaPreset {
+  id: string;
+  name: string;
+  phone: string;
+  label: string;
+  badge: string;
+  badgeColor: string;
+  type: 'repeat' | 'commander' | 'vip' | 'driver' | 'new';
+}
+
+const PERSONA_PRESETS: PersonaPreset[] = [
+  { id: 'repeat_dniv', name: 'ד.ניב', phone: '+972528765432', label: 'ד.ניב (לקוח חוזר 603377 / הבנות 16)', badge: 'לקוח חוזר', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', type: 'repeat' },
+  { id: 'repeat_vagshel', name: 'וגשל דאו', phone: '+972549876543', label: 'וגשל דאו (לקוח חוזר 811005)', badge: 'לקוח חוזר', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', type: 'repeat' },
+  { id: 'repeat_shaked', name: 'השוקדים', phone: '+972531234567', label: 'השוקדים (לקוח חוזר 605070 / עלי זהב)', badge: 'לקוח חוזר', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', type: 'repeat' },
+  { id: 'rami', name: 'ראמי מסארווה', phone: '+972508860896', label: 'ראמי מסארווה (050-886-0896)', badge: 'המפקד 🫡', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40', type: 'commander' },
+  { id: 'harel', name: 'הראל אידלסון', phone: '+972541112233', label: 'הראל אידלסון (מנכ"ל ח. סבן)', badge: 'הנהלה', badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40', type: 'vip' },
+  { id: 'mom', name: 'אמא של ראמי', phone: '+972509998877', label: 'אמא של ראמי', badge: 'משפחה ❤️', badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40', type: 'vip' },
+  { id: 'hikmat', name: 'חכמת מנוף', phone: '+972501112244', label: 'חכמת (משאית מנוף 615-41-002)', badge: 'נהג 🚛', badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/40', type: 'driver' },
+  { id: 'new_client', name: 'לקוח חדש', phone: '+972529988776', label: 'לקוח חדש (ללא היסטוריה קודמת)', badge: 'לקוח חדש', badgeColor: 'bg-slate-700 text-slate-300 border-slate-600', type: 'new' }
+];
+
 export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   isOpen,
   onClose,
   flow,
   onEventSent
 }) => {
-  const [phone, setPhone] = useState('+972524458912');
+  const [selectedPersona, setSelectedPersona] = useState<PersonaPreset>(PERSONA_PRESETS[0]);
+  const [phone, setPhone] = useState(PERSONA_PRESETS[0].phone);
+  const [customerName, setCustomerName] = useState(PERSONA_PRESETS[0].name);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedListId, setExpandedListId] = useState<string | null>(null);
@@ -263,7 +286,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         from: phone,
         text: textToSend,
         listReplyId: listReplyId,
-        customerName: 'בדיקת סימולטור'
+        customerName: customerName || selectedPersona.name
       });
 
       setIsLoading(false);
@@ -419,6 +442,37 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           <div className="flex items-center gap-2 text-emerald-300/90 font-mono text-[9px] dir-ltr">
             {lastSyncTime ? `עדכון: ${lastSyncTime}` : 'RTDB מחובר'}
           </div>
+        </div>
+
+        {/* Persona Switcher Bar for Repeat Customer / VIP / Commander Testing */}
+        <div className="bg-slate-900/95 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-300 font-medium shrink-0">
+            <span className="text-[11px] text-slate-400">פונה:</span>
+            <select
+              value={selectedPersona.id}
+              onChange={(e) => {
+                const found = PERSONA_PRESETS.find(p => p.id === e.target.value);
+                if (found) {
+                  setSelectedPersona(found);
+                  setPhone(found.phone);
+                  setCustomerName(found.name);
+                  setToastMessage(`הוחלפה זהות פונה ל: ${found.label}`);
+                  setShowUpdateToast(true);
+                  setTimeout(() => setShowUpdateToast(false), 2000);
+                }
+              }}
+              className="bg-slate-950 border border-slate-700 text-slate-100 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-emerald-500 max-w-[220px] truncate"
+            >
+              {PERSONA_PRESETS.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${selectedPersona.badgeColor}`}>
+            {selectedPersona.badge}
+          </span>
         </div>
 
         {/* Live Notification Toast Banner */}
@@ -597,10 +651,35 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
           {/* 1. Main Menu Greeting button */}
           <button
-            onClick={() => triggerIncoming('שלום, אשמח לתפריט חומרי בניין')}
+            onClick={() => triggerIncoming('שלום')}
             className="px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 active:scale-95 text-emerald-200 rounded-xl text-xs shrink-0 border border-emerald-700/60 font-semibold min-h-[38px] flex items-center gap-1.5 transition-all shadow-sm"
           >
-            👋 <span>שלום (ראשי)</span>
+            👋 <span>שלום</span>
+          </button>
+
+          {/* Repeat Customer Quick Chips */}
+          <button
+            onClick={() => triggerIncoming('כמו פעם שעברה')}
+            className="px-3 py-2 bg-amber-950/60 hover:bg-amber-900 active:scale-95 text-amber-200 rounded-xl text-xs shrink-0 border border-amber-600/50 font-semibold min-h-[38px] flex items-center gap-1.5 transition-all shadow-sm"
+            title="שחזור הזמנה קודמת ללקוח חוזר"
+          >
+            🔁 <span>כמו פעם שעברה</span>
+          </button>
+
+          <button
+            onClick={() => triggerIncoming('לאותו אתר')}
+            className="px-3 py-2 bg-teal-950/60 hover:bg-teal-900 active:scale-95 text-teal-200 rounded-xl text-xs shrink-0 border border-teal-600/50 font-semibold min-h-[38px] flex items-center gap-1.5 transition-all shadow-sm"
+            title="אישור אתר אחרון"
+          >
+            📍 <span>לאותו אתר</span>
+          </button>
+
+          <button
+            onClick={() => triggerIncoming('5 בלות חול ו-20 שקי מלט')}
+            className="px-3 py-2 bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs shrink-0 border border-slate-600 font-semibold min-h-[38px] flex items-center gap-1.5 transition-all shadow-sm"
+            title="הזמנת חומרים עם נרמול ופקדונות"
+          >
+            🧱 <span>הזמנת חומרים</span>
           </button>
 
           {/* 2. Dynamically rendered chips matching ALL rows currently in the live menu */}

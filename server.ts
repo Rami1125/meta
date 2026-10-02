@@ -22,6 +22,7 @@ import {
   JoniWebhookPayload
 } from './src/types/studio.ts';
 import { processNoaAiMessage } from './src/logic/noaAiEngine.ts';
+import { ordersService } from './src/services/ordersService.ts';
 
 dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), '.env.production') });
@@ -1394,12 +1395,23 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
         await updateSession(cleanPayload.from, { step: 'completed', lastChoice: 'create_container_task' });
       }
     } else {
-      // 7. Execute Noa AI Operational Protocol (Rami Commander Protocol, VIPs, 1-5 Tree, Catalog & Deposits)
-      const noaResult = processNoaAiMessage(cleanPayload.text, cleanPayload.name, cleanPayload.from);
+      // 7. Execute Noa AI Operational Protocol (Rami Commander, VIPs, Customer History, 1-5 Tree, Catalog & Deposits)
+      let customerHistory = null;
+      try {
+        customerHistory = await ordersService.getCustomerProfile(undefined, cleanPayload.name, cleanPayload.from);
+      } catch (err: any) {
+        console.warn('Customer history lookup warning:', err.message);
+      }
+
+      const noaResult = processNoaAiMessage(cleanPayload.text, cleanPayload.name, cleanPayload.from, customerHistory);
       replyText = noaResult.replyText;
       flowTitle = noaResult.flowTitle;
       chosenBranchId = noaResult.branchId;
-      await updateSession(cleanPayload.from, { step: noaResult.branchId, lastChoice: noaResult.branchId });
+      await updateSession(cleanPayload.from, { 
+        step: noaResult.branchId, 
+        lastChoice: noaResult.branchId,
+        customerName: customerHistory?.customerName || cleanPayload.name
+      });
     }
 
     // 8. Dispatch reply to customer via WhatsApp
@@ -1883,6 +1895,7 @@ const userSessions = new Map<string, {
   lastChoice?: string; 
   containerAction?: string; 
   containerSize?: string; 
+  customerName?: string;
   updatedAt: string; 
 }>();
 
@@ -1891,6 +1904,7 @@ async function updateSession(from: string, sessionData: {
   lastChoice?: string; 
   containerAction?: string; 
   containerSize?: string; 
+  customerName?: string;
 }) {
   const cleanFrom = String(from).replace(/[^0-9]/g, '');
   userSessions.set(cleanFrom, {
@@ -2579,7 +2593,11 @@ app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
     }
 
     if (!replyText) {
-      const noaResult = processNoaAiMessage(incomingText, senderName, cleanFrom);
+      let customerHistory = null;
+      try {
+        customerHistory = await ordersService.getCustomerProfile(undefined, senderName, cleanFrom);
+      } catch {}
+      const noaResult = processNoaAiMessage(incomingText, senderName, cleanFrom, customerHistory);
       replyText = noaResult.replyText;
     }
 
@@ -2738,6 +2756,82 @@ app.post('/api/bridge/sync', async (_req: Request, res: Response) => {
   try {
     await checkOutboundQueueFromSheet();
     res.json({ success: true, message: 'סנכרון תור יוצא וסגירת מעגל בוצעו בהצלחה' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==============================================================================
+// 12. ניהול הזמנות והיסטוריית לקוחות מתוך Google Sheets (דשבורד_הזמנות)
+// ==============================================================================
+
+app.get('/api/orders/history', async (req: Request, res: Response) => {
+  try {
+    const { customerId, customerName, phone, refresh } = req.query as Record<string, string>;
+    const forceRefresh = refresh === 'true' || refresh === '1';
+
+    let orders;
+    if (customerId || customerName || phone) {
+      if (forceRefresh) await ordersService.fetchAllOrders(true);
+      orders = await ordersService.getOrdersByCustomerId(customerId, customerName, phone);
+    } else {
+      orders = await ordersService.fetchAllOrders(forceRefresh);
+    }
+
+    res.json({
+      success: true,
+      count: orders.length,
+      orders
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, orders: [] });
+  }
+});
+
+app.get('/api/customers/history', async (req: Request, res: Response) => {
+  try {
+    const { customerId, customerName, phone } = req.query as Record<string, string>;
+    const profile = await ordersService.getCustomerProfile(customerId, customerName, phone);
+    
+    if (!profile) {
+      return res.json({
+        success: true,
+        exists: false,
+        message: 'לא נמצאה היסטוריית הזמנות עבור לקוח זה',
+        profile: null
+      });
+    }
+
+    res.json({
+      success: true,
+      exists: true,
+      profile
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/customers/reorder', async (req: Request, res: Response) => {
+  try {
+    const { customerId, customerName, phone } = req.query as Record<string, string>;
+    const profile = await ordersService.getCustomerProfile(customerId, customerName, phone);
+    
+    if (!profile || !profile.lastOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'לא נמצאה הזמנה קודמת לשחזור'
+      });
+    }
+
+    res.json({
+      success: true,
+      customerName: profile.customerName,
+      lastOrder: profile.lastOrder,
+      items: profile.lastOrder.parsedItems,
+      deliveryAddress: profile.lastOrder.deliveryAddress,
+      formattedSummary: profile.lastOrderFormattedSummary
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

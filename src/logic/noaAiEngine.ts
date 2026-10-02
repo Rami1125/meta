@@ -13,7 +13,8 @@ export interface NoaReplyResult {
   branchId: string;
   isRami: boolean;
   isVIP: boolean;
-  actionType: 'rami_command' | 'vip_escalation' | 'order_intake' | 'container_task' | 'pickup_info' | 'tracking_check' | 'quote_escalation' | 'general_menu';
+  actionType: 'rami_command' | 'vip_escalation' | 'order_intake' | 'container_task' | 'pickup_info' | 'tracking_check' | 'quote_escalation' | 'general_menu' | 'repeat_customer';
+  customerProfile?: any;
 }
 
 // נרמול מק"טים תקניים של ח. סבן
@@ -52,7 +53,8 @@ const KNOWN_CITIES = [
 export function processNoaAiMessage(
   rawText: string,
   rawName: string = 'לקוח',
-  rawPhone: string = ''
+  rawPhone: string = '',
+  customerHistory?: any
 ): NoaReplyResult {
   const text = (rawText || '').trim();
   const lower = text.toLowerCase();
@@ -219,6 +221,108 @@ export function processNoaAiMessage(
       isVIP: true,
       actionType: 'rami_command'
     };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // 🔍 2.5 נוהל זיהוי לקוח חוזר והיסטוריית רכישות (Customer History)
+  // ════════════════════════════════════════════════════════════════════════════
+  const hasCustomerHistory = Boolean(
+    customerHistory && 
+    (customerHistory.ordersCount > 0 || (customerHistory.orders && customerHistory.orders.length > 0))
+  );
+
+  if (hasCustomerHistory) {
+    const lastOrder = customerHistory.lastOrder || (customerHistory.orders && customerHistory.orders[0]);
+    const lastAddress = lastOrder?.deliveryAddress || (customerHistory.previousAddresses && customerHistory.previousAddresses[0]) || '';
+    const topProducts = customerHistory.topProducts || [];
+    const displayName = customerHistory.customerName || cleanName;
+
+    // 4. אם הלקוח מבקש "כמו פעם שעברה" — שחזר מיד את רשימת המוצרים והמק"טים המדויקת של אותה הזמנה
+    const isRepeatLastOrderRequest = 
+      lower.includes('כמו פעם שעברה') || 
+      lower.includes('כמו קודם') || 
+      lower.includes('אותו דבר') || 
+      lower.includes('כמו בהזמנה הקודמת') || 
+      lower.includes('שחזר לי הזמנה') || 
+      lower.includes('שחזור הזמנה') || 
+      lower.includes('לשחזר') || 
+      lower.includes('הזמנה קודמת') || 
+      lower === '1';
+
+    if (isRepeatLastOrderRequest && lastOrder) {
+      const summary = customerHistory.lastOrderFormattedSummary || 
+        (lastOrder.parsedItems && lastOrder.parsedItems.length > 0 
+          ? lastOrder.parsedItems.map((p: any) => `• ${p.name}${p.sku ? ` (מק"ט ${p.sku})` : ''}: *${p.quantity}*`).join('\n')
+          : lastOrder.rawProducts || 'אותם חומרים כבהזמנה הקודמת');
+
+      return {
+        replyText: `שלום ${displayName}! 📦\nשחזרתי עבורך את ההזמנה הקודמת${lastOrder.orderId ? ` (הזמנה קומקס #${lastOrder.orderId})` : ''} במדויק! ✅\n\n📋 *מפרט המוצרים והמק"טים ששוחזרו:*\n${summary}\n\n📍 *אישור אתר אספקה:*\nהאם לספק לכתובת האתר האחרונה: "*${lastAddress}*", או שיש אתר אספקה חדש?`,
+        flowTitle: 'שחזור הזמנה קודמת ללקוח חוזר',
+        branchId: 'repeat_customer_reorder',
+        isRami: false,
+        isVIP: false,
+        actionType: 'repeat_customer',
+        customerProfile: customerHistory
+      };
+    }
+
+    // אם הלקוח אישר את הכתובת הקודמת
+    const isConfirmingAddress = 
+      lower.includes('לאותו אתר') || 
+      lower.includes('לאותה כתובת') || 
+      lower === 'כן' || 
+      lower === 'לשם' || 
+      lower.includes('לכתובת הקודמת');
+
+    if (isConfirmingAddress && lastAddress) {
+      return {
+        replyText: `מצוין ${displayName}! רשמתי אספקה ל-*"${lastAddress}"* 📍\n\nהאם לשבץ את אותם המוצרים כמו פעם שעברה, או שתרצה להוסיף/לשנות כמויות וחומרים?`,
+        flowTitle: 'אישור כתובת אתר ללקוח חוזר',
+        branchId: 'repeat_customer_address_confirmed',
+        isRami: false,
+        isVIP: false,
+        actionType: 'repeat_customer',
+        customerProfile: customerHistory
+      };
+    }
+
+    // 1-3. פנייה בשם מלא, הצגת כתובת אחרונה ושאלת אתר, תזכורת 2-3 מוצרים מובילים
+    const isGreetingOrMenu = 
+      lower === '' || 
+      lower === '0' || 
+      lower === 'תפריט' || 
+      lower === 'ראשי' || 
+      lower.includes('היי') || 
+      lower.includes('שלום') || 
+      lower.includes('בוקר טוב') || 
+      lower.includes('ערב טוב') || 
+      lower.includes('חזרה');
+
+    const containsMaterialsInText = STANDARD_CATALOG.some(item => 
+      item.keywords.some(kw => lower.includes(kw))
+    );
+
+    if (isGreetingOrMenu && !containsMaterialsInText) {
+      let topProductsText = '';
+      if (topProducts.length > 0) {
+        topProductsText = `\n💡 *לנוחיותך, מוצרים מובילים שרכשת אצלנו בעבר:*\n` + 
+          topProducts.slice(0, 3).map((p: any) => `• ${p.name}${p.sku ? ` (מק"ט ${p.sku})` : ''}`).join('\n') + '\n';
+      }
+
+      const addressPrompt = lastAddress 
+        ? `📍 *האם המשלוח מיועד ל-${lastAddress} או לאתר חדש?*`
+        : `📍 לאיזה אתר אספקה מיועד המשלוח הפעם?`;
+
+      return {
+        replyText: `שלום ${displayName}! 🏗️\nשמחים לראותך שוב ב-*ח. סבן חומרי בניין (1994) בע״מ*!\nזיהיתי אותך כלקוח חוזר מוערך של סבן.\n${topProductsText}\n${addressPrompt}\n\nנא להשיב עם הפעולה הרצויה:\n[1] 🔁 *שכפול ההזמנה הקודמת במדויק* ("כמו פעם שעברה")\n[2] 🧱 *הזמנת חומרים חדשים לאתר*\n[3] 🚛 *שירות מכולות לפינוי פסולת*\n[4] 📦 *בירור סטטוס הזמנה / נהג*\n[5] 📞 *מענה אישי מול ראמי מסארווה*`,
+        flowTitle: 'נוהל זיהוי לקוח חוזר והיסטוריית רכישות',
+        branchId: 'repeat_customer_welcome',
+        isRami: false,
+        isVIP: false,
+        actionType: 'repeat_customer',
+        customerProfile: customerHistory
+      };
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════════

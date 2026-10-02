@@ -20,6 +20,8 @@ import {
 } from '../data/defaultFlow';
 
 import { callGeminiClient, SABAN_AI_SYSTEM_PROMPT } from './geminiService';
+import { processNoaAiMessage } from '../logic/noaAiEngine';
+import { ordersService } from './ordersService';
 
 export const api = {
   // 1. Flow & Branch Trees (Direct Firebase RTDB: /chat_flows/main and /flows/active)
@@ -756,21 +758,24 @@ export const api = {
         }
       }
     } else if (text) {
-      const low = text.toLowerCase();
-      if (low.includes('מכול') || low.includes('פסולת')) {
-        targetNode = {
-          id: 'container_resp',
+      // Execute Noa AI Operational Protocol with Customer History
+      let customerHistory = null;
+      try {
+        customerHistory = await ordersService.getCustomerProfile(undefined, customerName, phone);
+      } catch {}
+
+      const noaResult = processNoaAiMessage(text, customerName, phone, customerHistory);
+      
+      targetNode = {
+        id: noaResult.branchId || 'noa_reply',
+        type: 'text',
+        title: noaResult.flowTitle || 'מענה נועה AI',
+        position: { x: 440, y: 200 },
+        data: {
           type: 'text',
-          title: '🗑️ מכולות פסולת',
-          position: { x: 440, y: 460 },
-          data: {
-            type: 'text',
-            text: 'מכולות 8 ו-12 קוב לפסולת בניין זמינות להצבה מיידית בכפר ברא והסביבה! לתיאום משאית רמסע חייג לראמי 050-8860896 🚛'
-          }
-        };
-      } else {
-        targetNode = currentFlow.nodes.find(n => n.id === 'welcome_menu') || currentFlow.nodes[0];
-      }
+          text: noaResult.replyText
+        }
+      };
     }
 
     // Write incoming message to Firebase RTDB joni/incoming
