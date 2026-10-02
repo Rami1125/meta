@@ -21,6 +21,7 @@ import {
   ListMenuRow,
   JoniWebhookPayload
 } from './src/types/studio.ts';
+import { processNoaAiMessage } from './src/logic/noaAiEngine.ts';
 
 dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), '.env.production') });
@@ -1393,31 +1394,12 @@ const handleJoniWebhook = async (req: Request, res: Response) => {
         await updateSession(cleanPayload.from, { step: 'completed', lastChoice: 'create_container_task' });
       }
     } else {
-      // 7. Check if user typed an exact single menu option ("1", "2", "3", "4"), otherwise FREE AI CHAT!
-      const trimmed = cleanPayload.text.trim().toLowerCase();
-      const isExactDigitMenu = ['1', '2', '3', '4'].includes(trimmed);
-
-      if (isExactDigitMenu) {
-        const idMap: Record<string, string> = {
-          '1': 'order_delivery',
-          '2': 'self_pickup',
-          '3': 'waste_container',
-          '4': 'track_order'
-        };
-        const mappedId = idMap[trimmed];
-        const dynamicBranch = getDynamicBranch(mappedId);
-        replyText = dynamicBranch ? dynamicBranch.text : 'פנייתך התקבלה בח. סבן';
-        flowTitle = dynamicBranch ? dynamicBranch.title : 'ענף סבן';
-        chosenBranchId = mappedId;
-        await updateSession(cleanPayload.from, { step: dynamicBranch?.next || 'completed', lastChoice: mappedId });
-      } else {
-        // Global Catch-All Default: Any incoming message to +972508860896 receives welcome_menu
-        console.log(`[Global Catch-All Trigger] Dispatching dynamic welcome menu to ${cleanPayload.from}...`);
-        replyText = getDynamicWelcomeText();
-        flowTitle = 'תפריט ראשי סבן (Catch-All)';
-        chosenBranchId = 'welcome_menu';
-        await updateSession(cleanPayload.from, { step: 'welcome_menu', lastChoice: 'welcome_menu' });
-      }
+      // 7. Execute Noa AI Operational Protocol (Rami Commander Protocol, VIPs, 1-5 Tree, Catalog & Deposits)
+      const noaResult = processNoaAiMessage(cleanPayload.text, cleanPayload.name, cleanPayload.from);
+      replyText = noaResult.replyText;
+      flowTitle = noaResult.flowTitle;
+      chosenBranchId = noaResult.branchId;
+      await updateSession(cleanPayload.from, { step: noaResult.branchId, lastChoice: noaResult.branchId });
     }
 
     // 8. Dispatch reply to customer via WhatsApp
@@ -2597,21 +2579,8 @@ app.post('/api/bridge/incoming', async (req: Request, res: Response) => {
     }
 
     if (!replyText) {
-      // Fallback Saban Menu / Response
-      const lower = incomingText.toLowerCase();
-      if (lower.includes('1') || lower.includes('הובלה') || lower.includes('ברזל') || lower.includes('בלוק') || lower.includes('מלט')) {
-        replyText = '🚚 מעולה! איזה חומר צריך? (ברזל, בלוקים, מלט נשר, חול/טיט) ולאיזו כתובת מדויקת? נציגנו ראמי מסארווה (050-886-0896) יתאם אספקה מהירה לאתר.';
-      } else if (lower.includes('2') || lower.includes('איסוף') || lower.includes('מחסן')) {
-        replyText = '🏪 מחסן ח. סבן כפר ברא פתוח בימים א-ה 06:00-17:00, ויום ו 06:30-13:00. שלח פירוט וראמי יכין לך הכל מראש במזלג!';
-      } else if (lower.includes('3') || lower.includes('מכולה') || lower.includes('פסולת')) {
-        replyText = '🗑️ שירות מכולות פסולת ח. סבן: זמינות מכולות 6, 8 ו-12 קוב להצבה מיידית. אנא ציין כתובת ונפח מבוקש. שים לב שנדרשת גישה פנויה למשאית רמסע 🚛.';
-      } else if (lower.includes('4') || lower.includes('מעקב') || lower.includes('נהג')) {
-        replyText = '🔍 מעקב משלוחים ח. סבן: נהג מנוף ראמי נמצא בדרכים. לבירור ישיר צלצל עכשיו: 050-886-0896 📞.';
-      } else if (lower.includes('בדיקה') || incomingText === 'test') {
-        replyText = 'הבדיקה עברה בהצלחה 👍 מערכת סבן מחוברת ומוכנה לשירותך! איזה חומר תרצה להזמין?';
-      } else {
-        replyText = getDynamicWelcomeText();
-      }
+      const noaResult = processNoaAiMessage(incomingText, senderName, cleanFrom);
+      replyText = noaResult.replyText;
     }
 
     // 2. Broadcast to Make Webhook
